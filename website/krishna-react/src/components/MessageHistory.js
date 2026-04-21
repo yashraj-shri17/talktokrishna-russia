@@ -59,67 +59,100 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
 
     const formatMessage = (text) => {
         if (!text) return null;
-        const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '');
 
-        let parts = { opening: [], shloka: [], explanation: [], steps: [] };
-        let currentState = 'opening';
+        // ── STEP 1: Find the shloka citation as the primary section divider ──
+        // Supports both Russian citation ("Бхагавад-гита, Глава X, Текст Y")
+        // and English citation ("Bhagwat geeta Chapter X Shloka Y")
+        const shlokaCitationMatch = text.match(
+            /((?:Бхагавад-гита|Bhagwat\s*geeta|भगवद\s*गीता),?\s*(?:Глава|Chapter|अध्याय)\s*\d+,?\s*(?:Текст|Shloka|श्लोक)\s*\d+)/i
+        );
 
-        lines.forEach((line) => {
-            // Transition to Shloka
-            if (currentState === 'opening' && (line.includes('📖 Стих:') || line.includes('भगवद गीता') || line.includes('Bhagavad Gita') || line.includes('Бхагавад-гита') || line.includes('Глава') || line.includes('Шлока') || line.includes('Текст') || line.includes('Chapter'))) {
-                currentState = 'shloka';
-                if (!line.includes('📖 Стих:')) parts.shloka.push(line);
-                return;
-            }
-
-            // Transition to Explanation
-            if (line.includes('💡 Толкование:') || (currentState === 'shloka' && !line.match(/[।॥|‖]/) && !line.includes('Chapter') && !line.includes('Глава') && !line.includes('Текст') && !line.includes('Шлока') && line.length > 0 && !/[\u0900-\u097F]/.test(line))) {
-                currentState = 'explanation';
-                if (!line.includes('💡 Толкование:')) parts.explanation.push(line);
-                return;
-            }
-
-            // Transition to Steps
-            if (line.includes('🌈 Путь к действию:') || line.includes('Шаг 1') || (currentState === 'explanation' && (line.endsWith(':') || /^\d+\./.test(line)))) {
-                currentState = 'steps';
-                if (!line.includes('🌈 Путь к действию:')) parts.steps.push(line);
-                return;
-            }
-
-            if (parts[currentState]) {
-                parts[currentState].push(line);
-            }
-        });
-
-        // Fallback if parsing failed completely or it's a short text (e.g. user messages)
-        if (parts.shloka.length === 0 && parts.explanation.length === 0 && parts.steps.length === 0) {
-            return <div className="message-box general-box">{lines.map((l, i) => <p key={i}>{l}</p>)}</div>;
+        // Fallback: plain text (short messages, rejection responses, etc.)
+        if (!shlokaCitationMatch) {
+            return <div className="message-box general-box"><p>{text}</p></div>;
         }
 
+        const citation = shlokaCitationMatch[0];
+        const splitIndex = text.indexOf(citation);
+
+        // Part A: everything before the citation → Intro
+        const intro = text.substring(0, splitIndex).trim();
+
+        // Part B: everything from the citation onward
+        const rest = text.substring(splitIndex + citation.length).trim();
+
+        // ── STEP 2: Split "rest" into shloka verse, explanation, and steps ──
+        // Steps start when we see "1." at the beginning of a line
+        const stepsMarker = rest.match(/(?:^|\n)\s*1\./m);
+        let shlokaAndExplanation = rest;
+        let stepsPart = '';
+
+        if (stepsMarker) {
+            const stepsIndex = rest.indexOf(stepsMarker[0]);
+            shlokaAndExplanation = rest.substring(0, stepsIndex).trim();
+            stepsPart = rest.substring(stepsIndex).trim();
+        }
+
+        // Shloka verse ends at ॥ (the traditional Sanskrit end marker)
+        const shlokaEndMarker = shlokaAndExplanation.indexOf('॥');
+        let shlokaText = '';
+        let explanation = shlokaAndExplanation;
+
+        if (shlokaEndMarker !== -1) {
+            shlokaText = shlokaAndExplanation.substring(0, shlokaEndMarker + 1).trim();
+            explanation = shlokaAndExplanation.substring(shlokaEndMarker + 1).trim();
+        } else {
+            // Fallback: use first 2 lines as shloka text
+            const lines = shlokaAndExplanation.split('\n');
+            if (lines.length > 2) {
+                shlokaText = lines.slice(0, 2).join('\n');
+                explanation = lines.slice(2).join('\n').trim();
+            }
+        }
+
+        // ── STEP 3: getBoxTitle — hardcoded Russian labels added by the frontend ──
+        const getBoxTitle = (key) => {
+            switch (key) {
+                case 'intro':       return 'Божественное послание';
+                case 'shloka':      return 'Священная шлока';
+                case 'explanation': return 'Глубинный смысл';
+                case 'steps':       return 'Ваш путь';
+                default:            return '';
+            }
+        };
+
         return (
-            <div className="four-part-message">
-                {parts.opening.length > 0 && (
+            <div className="response-boxes">
+                {/* 1. Introduction */}
+                {intro && (
                     <div className="message-box opening-box">
-                        <span className="box-title">🙏 Божественное послание</span>
-                        {parts.opening.map((l, i) => <p key={i}>{l}</p>)}
+                        <span className="box-title">{getBoxTitle('intro')}</span>
+                        <p>{intro}</p>
                     </div>
                 )}
-                {parts.shloka.length > 0 && (
-                    <div className="message-box shloka-box">
-                        <span className="box-title">📖 Священная шлока</span>
-                        {parts.shloka.map((l, i) => <div key={i} className="shloka-line">{l}</div>)}
+
+                {/* 2. Shloka */}
+                <div className="message-box shloka-box">
+                    <span className="box-title">{getBoxTitle('shloka')}</span>
+                    <div className="shloka-content">
+                        <div className="citation-label">{citation}</div>
+                        {shlokaText && <p>{shlokaText}</p>}
                     </div>
-                )}
-                {parts.explanation.length > 0 && (
+                </div>
+
+                {/* 3. Explanation */}
+                {explanation && (
                     <div className="message-box explanation-box">
-                        <span className="box-title">💡 Глубинный смысл</span>
-                        {parts.explanation.map((l, i) => <p key={i}>{l}</p>)}
+                        <span className="box-title">{getBoxTitle('explanation')}</span>
+                        <p>{explanation}</p>
                     </div>
                 )}
-                {parts.steps.length > 0 && (
+
+                {/* 4. Action Steps */}
+                {stepsPart && (
                     <div className="message-box steps-box">
-                        <span className="box-title">🌈 Ваш путь к действию</span>
-                        {parts.steps.map((l, i) => <p key={i}>{l}</p>)}
+                        <span className="box-title">{getBoxTitle('steps')}</span>
+                        <p>{stepsPart}</p>
                     </div>
                 )}
             </div>
