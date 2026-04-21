@@ -1,0 +1,82 @@
+[
+    {
+        "question": "How can I find peace in this chaotic world according to the Gita?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "What is the importance of karma yoga?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Krishna, how should I deal with grief and loss?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "What does the Gita say about the soul and rebirth?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "How do I overcome my ego and pride?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "What is the best way to cook pasta?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Can you help me write a Python script for web scraping?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Who won the FIFA World Cup in 2018?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "What are the latest fashion trends for 2026?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "How do I fix a leaky faucet?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Как мне найти внутренний покой согласно Бхагавад-гите?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Что такое Карма-йога и как ей следовать?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Кришна, как мне справиться с тревогой и страхом?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Какова природа души согласно писаниям?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Как преодолеть гнев и зависть?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Какой сейчас лучший смартфон на рынке?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Как приготовить борщ?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Кто такой Илон Маск?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Расскажи мне о погоде в Москве.",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    },
+    {
+        "question": "Как выучить английский за месяц?",
+        "status": "FAILED: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /api/ask (Caused by NewConnectionError(\"HTTPConnection(host='localhost', port=5001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it\"))"
+    }
+]

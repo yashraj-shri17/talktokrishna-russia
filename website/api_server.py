@@ -772,7 +772,7 @@ def transcribe_audio():
             return jsonify({'error': 'No audio file provided', 'success': False}), 400
         
         audio_file = request.files['audio']
-        language = request.form.get('language', 'japanese')
+        language = request.form.get('language', 'russian')
         
         # Save temp file
         temp_path = os.path.join(AUDIO_DIR, f"temp_{uuid.uuid4()}.webm")
@@ -787,9 +787,11 @@ def transcribe_audio():
 
         # Call Groq
         with open(temp_path, "rb") as file:
-            prompt_str = "The user is speaking in Russian, Japanese, Hindi, or English. Please ALWAYS transcribe Russian phrases in Cyrillic script, Japanese phrases in Japanese (Kanji/Kana) script and Hindi in Devanagari script. Привет, как дела? Намасте. ナマステ、お元気ですか？ नमस्ते, आप कैसे हैं?"
             if language == 'english':
-                prompt_str = "The user is speaking in English. Please transcribe in English. Namaste, how are you?"
+                prompt_str = "The user is speaking in English. Please transcribe in English. Namaste, how are you? What does the Gita say about karma?"
+            else:
+                # Default: Russian — Whisper should focus on Cyrillic transcription
+                prompt_str = "The user is speaking in Russian. Please ALWAYS transcribe in Cyrillic script. Привет, как дела? Что говорит Бхагавад-гита о карме? Как найти покой?"
                 
             transcription = gita_api.groq_client.audio.transcriptions.create(
                 file=(audio_file.filename, file.read()),

@@ -402,7 +402,6 @@ function VoiceChat() {
 
         const formData = new FormData();
         formData.append('audio', audioBlob, 'record.webm');
-        formData.append('audio', audioBlob, 'record.webm');
         formData.append('language', selectedLanguage || 'russian');
 
         try {

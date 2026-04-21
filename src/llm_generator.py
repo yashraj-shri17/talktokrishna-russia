@@ -105,7 +105,6 @@ Reply with only: crisis OR distress OR general"""
         # CITATION FORMAT depends on language:
         #   english  → Russian body + "Bhagwat geeta Chapter X Shloka Y" (English citation)
         #   russian  → Russian body + "Бхагавад-гита, Глава X, Текст Y" (Russian citation)
-        #   japanese → Japanese body + Japanese citation (legacy, kept for compatibility)
         
         if language == 'russian':
             target_lang = "Russian (Русский)"
@@ -446,13 +445,13 @@ Reply with only: crisis OR distress OR general"""
         """Format the response cleanly."""
         output = []
         if result.get('llm_used') and result.get('answer'):
-            output.append("\n🪈 主クリシュナのメッセージ:\n")
+            output.append("\n🪈 Послание Господа Кришны:\n")
             output.append(result['answer'])
             output.append("\n")
         else:
-            output.append("\n⚠️ 申し訳ありません。現在、お答えすることができません。")
-            output.append("関連するシュローカ：")
+            output.append("\n⚠️ Простите. В данный момент я не могу ответить.")
+            output.append("Соответствующие шлоки:")
             for s in result.get('shlokas', [])[:3]:
-                output.append(f"- ギーター {s['id']}: {s['meaning_english'][:100]}...")
+                output.append(f"- Гита {s['id']}: {s['meaning_english'][:100]}...")
             output.append("\n")
         return "\n".join(output)
