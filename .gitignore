@@ -1,0 +1,135 @@
+# ==========================================
+# DEPLOYMENT - EXCLUDE HEAVY FILES
+# Render and Vercel will install everything
+# ==========================================
+
+# Python - Installed packages & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environment - NOT NEEDED for deployment
+venv/
+ENV/
+env/
+.venv/
+virtualenv/
+
+# Node.js - Frontend dependencies (HEAVY!)
+node_modules/
+website/krishna-react/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# React Build - Generated during deployment
+website/krishna-react/build/
+website/krishna-react/.env
+website/krishna-react/.env.local
+website/krishna-react/.env.production
+
+# Database - User data (NOT for git)
+*.db
+*.sqlite
+*.sqlite3
+users.db
+website/users.db
+
+# Audio Cache - Generated files
+website/audio_cache/
+audio_cache/
+*.mp3
+*.wav
+# Exception: static divine ambient music asset (must be deployed)
+!website/krishna-react/public/ytmp3~krishna.mp3
+
+# Environment Variables - SENSITIVE!
+.env
+.env.local
+.env.production
+.env.development
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+app.log
+npm-debug.log
+yarn-debug.log
+
+# Testing & Debug scripts (not for production)
+test_*.py
+debug_*.py
+run_quality_test.py
+setup.py
+ask_krishna.py
+*.txt
+!requirements.txt
+!runtime.txt
+!.env.example
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+coverage/
+
+# Old/backup model files
+models/embeddings.pkl
+models/*.bak
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Temporary files
+*.tmp
+*.bak
+*~.nib
+.cache/
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitattributes

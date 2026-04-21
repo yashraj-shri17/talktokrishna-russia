@@ -1,0 +1,40 @@
+# Core Dependencies
+numpy==1.26.4
+scikit-learn>=1.4.2
+fastembed>=0.2.0                # Lightweight, ONNX-based, no PyTorch required
+rank-bm25>=0.2.2
+
+# LLM Integration
+groq>=0.9.0                     # >=0.9.0 required for frequency_penalty support
+
+# Config & Environment
+python-dotenv>=1.0.0
+pydantic>=2.9
+pydantic-settings>=2.4.0
+
+# Logging
+colorlog>=6.8.0
+
+# Web API
+flask>=3.0.0
+flask-cors>=4.0.0
+edge-tts>=6.1.9
+pydub>=0.25.1                  # Audio decoding for silence detection (uses ffmpeg)
+
+
+# Production WSGI Server
+gunicorn>=21.2.0
+werkzeug>=3.0.0
+
+# Database (PostgreSQL for production)
+psycopg2-binary>=2.9.9
+
+# Razorpay Integration
+razorpay>=1.3.0
+
+# Email Notifications (Resend)
+resend>=2.1.0
+
+# Authentication
+google-auth>=2.29.0
+requests>=2.31.0

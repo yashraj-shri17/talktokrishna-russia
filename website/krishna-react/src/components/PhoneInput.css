@@ -1,0 +1,289 @@
+/* ============================================================
+   PhoneInput — Country Selector + Number Field
+   ============================================================ */
+
+.phone-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    border: 2px solid rgba(79, 70, 229, 0.15);
+    border-radius: 10px;
+    background: white;
+    transition: border-color 0.25s, box-shadow 0.25s;
+    overflow: visible;
+}
+
+.phone-input-wrapper:focus-within {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+}
+
+.phone-input-wrapper.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+[data-theme='dark'] .phone-input-wrapper {
+    background-color: #1e293b !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme='dark'] .phone-input-wrapper:focus-within {
+    border-color: #4f46e5 !important;
+    background-color: #0f172a !important;
+}
+
+[data-theme='dark'] .phone-number-input {
+    color: #f8fafc !important;
+}
+
+/* ── Country Trigger Button ── */
+.country-trigger {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px 8px 12px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+    border-radius: 10px 0 0 10px;
+    transition: background 0.2s;
+    font-family: inherit;
+}
+
+.country-trigger:hover:not(:disabled) {
+    background: rgba(79, 70, 229, 0.06);
+}
+
+.country-trigger:disabled {
+    cursor: not-allowed;
+}
+
+.country-flag {
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.country-dial {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #4f46e5;
+    letter-spacing: 0.3px;
+}
+
+[data-theme='dark'] .country-dial {
+    color: #818cf8;
+}
+
+.chevron {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    transition: transform 0.25s ease;
+    margin-left: 2px;
+}
+
+.chevron.open {
+    transform: rotate(180deg);
+}
+
+/* ── Divider ── */
+.phone-divider {
+    width: 1px;
+    height: 22px;
+    background: rgba(79, 70, 229, 0.15);
+    flex-shrink: 0;
+}
+
+[data-theme='dark'] .phone-divider {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Number Input ── */
+.phone-number-input {
+    flex: 1;
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    padding: 8px 12px !important;
+    font-size: 0.9rem !important;
+    font-family: inherit;
+    color: var(--text-primary, #1e293b) !important;
+    min-width: 0;
+    box-shadow: none !important;
+    border-radius: 0 10px 10px 0 !important;
+}
+
+.phone-number-input::placeholder {
+    color: #94a3b8;
+}
+
+/* ── Dropdown ── */
+.country-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 280px;
+    background: white;
+    border: 1px solid rgba(79, 70, 229, 0.15);
+    border-radius: 14px;
+    box-shadow: 0 20px 50px rgba(79, 70, 229, 0.18), 0 4px 16px rgba(0,0,0,0.08);
+    z-index: 9999;
+    overflow: hidden;
+    animation: dropdownAppear 0.2s ease;
+}
+
+[data-theme='dark'] .country-dropdown {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes dropdownAppear {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)  scale(1); }
+}
+
+/* Search Box */
+.country-search-wrap {
+    padding: 10px 10px 6px;
+    border-bottom: 1px solid rgba(79, 70, 229, 0.08);
+}
+
+[data-theme='dark'] .country-search-wrap {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.country-search {
+    width: 100%;
+    padding: 7px 12px;
+    border: 1px solid rgba(79, 70, 229, 0.2);
+    border-radius: 8px;
+    font-size: 0.83rem;
+    font-family: inherit;
+    background: rgba(79, 70, 229, 0.04);
+    color: var(--text-primary, #1e293b);
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.country-search:focus {
+    border-color: #4f46e5;
+    background: white;
+}
+
+[data-theme='dark'] .country-search {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+}
+
+[data-theme='dark'] .country-search:focus {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #818cf8;
+}
+
+/* Country List */
+.country-list {
+    list-style: none;
+    margin: 0;
+    padding: 6px 0;
+    max-height: 220px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(79, 70, 229, 0.3) transparent;
+}
+
+.country-list::-webkit-scrollbar {
+    width: 5px;
+}
+
+.country-list::-webkit-scrollbar-thumb {
+    background: rgba(79, 70, 229, 0.25);
+    border-radius: 10px;
+}
+
+.country-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 0.85rem;
+}
+
+.country-option:hover {
+    background: rgba(79, 70, 229, 0.07);
+}
+
+.country-option.active {
+    background: rgba(79, 70, 229, 0.1);
+}
+
+[data-theme='dark'] .country-option:hover {
+    background: rgba(129, 140, 248, 0.12);
+}
+
+[data-theme='dark'] .country-option.active {
+    background: rgba(129, 140, 248, 0.18);
+}
+
+.opt-flag {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.opt-name {
+    flex: 1;
+    color: var(--text-primary, #1e293b);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+[data-theme='dark'] .opt-name {
+    color: #e2e8f0;
+}
+
+.opt-dial {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #4f46e5;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+}
+
+[data-theme='dark'] .opt-dial {
+    color: #818cf8;
+}
+
+.country-no-result {
+    padding: 12px 16px;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.83rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+    .country-dropdown {
+        width: calc(100vw - 32px);
+        left: 0;
+    }
+
+    .country-trigger {
+        padding: 7px 8px 7px 10px;
+    }
+
+    .country-flag {
+        font-size: 1.1rem;
+    }
+
+    .country-dial {
+        font-size: 0.8rem;
+    }
+}

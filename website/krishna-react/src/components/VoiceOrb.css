@@ -1,0 +1,261 @@
+.voice-orb-container {
+    position: relative;
+    width: 260px;
+    height: 260px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: scaleIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Outer glow rings */
+.orb-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid;
+    opacity: 0;
+    animation: ringPulse 3s ease-out infinite;
+    z-index: 0;
+}
+
+.ring-1 {
+    width: 260px;
+    height: 260px;
+    border-color: rgba(236, 72, 153, 0.2);
+    background: radial-gradient(circle, rgba(236, 72, 153, 0.05) 0%, transparent 70%);
+    animation-delay: 0s;
+}
+
+.ring-2 {
+    width: 320px;
+    height: 320px;
+    border-color: rgba(168, 85, 247, 0.15);
+    animation-delay: 1s;
+}
+
+.ring-3 {
+    width: 380px;
+    height: 380px;
+    border-color: rgba(236, 72, 153, 0.1);
+    animation-delay: 2s;
+}
+
+@keyframes ringPulse {
+    0% {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1.2);
+        opacity: 0;
+    }
+}
+
+/* Main orb - Ethereal & Large */
+.voice-orb {
+    position: relative;
+    width: 260px;
+    /* Larger */
+    height: 260px;
+    border-radius: 50%;
+    /* Divine Ethereal Gradient */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow:
+        0 0 60px rgba(124, 58, 237, 0.2),
+        /* Soft outer purple glow */
+        inset 0 0 40px rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    z-index: 10;
+    transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Inner Liquid/Gradient ball - Smoother Flow */
+.voice-orb::after {
+    content: '';
+    position: absolute;
+    width: 80%;
+    height: 80%;
+    border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+    background: linear-gradient(135deg, #c084fc 0%, #6366f1 50%, #ec4899 100%);
+    filter: blur(30px);
+    /* Heavier blur for liquid effect */
+    opacity: 0.9;
+    animation: liquidMorph 8s linear infinite;
+}
+
+@keyframes liquidMorph {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Orb icon - Floating above */
+.orb-icon {
+    position: relative;
+    z-index: 20;
+    font-size: 5rem;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.1));
+    animation: float 3s ease-in-out infinite;
+    mix-blend-mode: overlay;
+    color: white;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+/* State: Listening */
+.voice-orb-container.listening .voice-orb::after {
+    background: linear-gradient(135deg, #f43f5e 0%, #ec4899 100%);
+    opacity: 1;
+    filter: blur(5px);
+    animation: breathe 1.5s ease-in-out infinite;
+}
+
+.voice-orb-container.listening .orb-ring {
+    border-color: rgba(244, 63, 94, 0.3);
+    animation-duration: 1.5s;
+}
+
+@keyframes breathe {
+
+    0%,
+    100% {
+        transform: scale(0.95);
+    }
+
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+/* State: Speaking */
+.voice-orb-container.speaking .voice-orb::after {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    animation: speakPulse 0.4s ease-in-out infinite;
+    filter: blur(8px);
+}
+
+@keyframes speakPulse {
+
+    0%,
+    100% {
+        transform: scale(0.9);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.15);
+        opacity: 1;
+    }
+}
+
+/* State: Loading */
+.voice-orb-container.loading .voice-orb {
+    animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .voice-orb-container {
+        width: 220px;
+        height: 220px;
+    }
+
+    .voice-orb {
+        width: 160px;
+        height: 160px;
+    }
+
+    .orb-icon {
+        font-size: 4rem;
+    }
+
+    .ring-1 {
+        width: 220px;
+        height: 220px;
+    }
+
+    .ring-2 {
+        width: 260px;
+        height: 260px;
+    }
+
+    .ring-3 {
+        width: 300px;
+        height: 300px;
+    }
+
+    .waveform {
+        height: 50px;
+        gap: 4px;
+    }
+
+    .wave-bar {
+        width: 3px;
+    }
+}
+
+@media (max-width: 480px) {
+    .voice-orb-container {
+        width: 180px;
+        height: 180px;
+    }
+
+    .voice-orb {
+        width: 140px;
+        height: 140px;
+    }
+
+    .orb-icon {
+        font-size: 3.5rem;
+    }
+
+    .ring-1 {
+        width: 180px;
+        height: 180px;
+    }
+
+    .ring-2 {
+        width: 220px;
+        height: 220px;
+    }
+
+    .ring-3 {
+        width: 260px;
+        height: 260px;
+    }
+}
