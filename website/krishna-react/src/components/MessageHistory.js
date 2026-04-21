@@ -66,33 +66,24 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
 
         lines.forEach((line) => {
             // Transition to Shloka
-            if (currentState === 'opening' && (line.includes('भगवद गीता') || line.includes('Bhagavad Gita') || line.includes('Бхагавад-гита') || line.includes('Глава') || line.includes('Шлока') || line.includes('Текст') || line.includes('Chapter'))) {
+            if (currentState === 'opening' && (line.includes('📖 Стих:') || line.includes('भगवद गीता') || line.includes('Bhagavad Gita') || line.includes('Бхагавад-гита') || line.includes('Глава') || line.includes('Шлока') || line.includes('Текст') || line.includes('Chapter'))) {
                 currentState = 'shloka';
-                parts.shloka.push(line);
+                if (!line.includes('📖 Стих:')) parts.shloka.push(line);
                 return;
             }
 
             // Transition to Explanation
-            if (currentState === 'shloka') {
-                const isShlokaLine = line.match(/[।॥|‖]/) || line.includes('Chapter') || line.includes('भगवद गीता') || line.includes('Bhagavad Gita') || line.includes('Бхагавад-гита') || line.includes('Глава') || line.includes('Текст') || line.includes('Шлока');
-                if (!isShlokaLine && line.length > 0) {
-                    // Try to guess if it's still Sanskrit based on Devanagari chars without dandas
-                    const hasDevanagari = /[\u0900-\u097F]/.test(line);
-                    if (!hasDevanagari) {
-                        currentState = 'explanation';
-                        parts.explanation.push(line);
-                        return;
-                    }
-                }
+            if (line.includes('💡 Толкование:') || (currentState === 'shloka' && !line.match(/[।॥|‖]/) && !line.includes('Chapter') && !line.includes('Глава') && !line.includes('Текст') && !line.includes('Шлока') && line.length > 0 && !/[\u0900-\u097F]/.test(line))) {
+                currentState = 'explanation';
+                if (!line.includes('💡 Толкование:')) parts.explanation.push(line);
+                return;
             }
 
             // Transition to Steps
-            if (currentState === 'explanation') {
-                if (line.endsWith(':') || /^\d+\./.test(line)) {
-                    currentState = 'steps';
-                    parts.steps.push(line);
-                    return;
-                }
+            if (line.includes('🌈 Путь к действию:') || line.includes('Шаг 1') || (currentState === 'explanation' && (line.endsWith(':') || /^\d+\./.test(line)))) {
+                currentState = 'steps';
+                if (!line.includes('🌈 Путь к действию:')) parts.steps.push(line);
+                return;
             }
 
             if (parts[currentState]) {
@@ -109,21 +100,25 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
             <div className="four-part-message">
                 {parts.opening.length > 0 && (
                     <div className="message-box opening-box">
+                        <span className="box-title">🙏 Божественное послание</span>
                         {parts.opening.map((l, i) => <p key={i}>{l}</p>)}
                     </div>
                 )}
                 {parts.shloka.length > 0 && (
                     <div className="message-box shloka-box">
+                        <span className="box-title">📖 Священная шлока</span>
                         {parts.shloka.map((l, i) => <div key={i} className="shloka-line">{l}</div>)}
                     </div>
                 )}
                 {parts.explanation.length > 0 && (
                     <div className="message-box explanation-box">
+                        <span className="box-title">💡 Глубинный смысл</span>
                         {parts.explanation.map((l, i) => <p key={i}>{l}</p>)}
                     </div>
                 )}
                 {parts.steps.length > 0 && (
                     <div className="message-box steps-box">
+                        <span className="box-title">🌈 Ваш путь к действию</span>
                         {parts.steps.map((l, i) => <p key={i}>{l}</p>)}
                     </div>
                 )}

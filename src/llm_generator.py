@@ -140,14 +140,14 @@ Reply with only: crisis OR distress OR general"""
             "STRICT OUTPUT FORMAT (Follow Exactly):\n"
             f"1. ONE opening sentence: acknowledge the user's SPECIFIC situation in {target_lang}.\n"
             "   CRITICAL IDENTITY PRESERVATION: Use the EXACT relative/person mentioned.\n"
-            "2. Quote EXACTLY ONE Shloka (NOT TWO). Choose the single MOST UNIQUELY relevant shloka to THIS problem "
+            f"2. Quote EXACTLY ONE Shloka (NOT TWO) under the heading '📖 Стих:'. Choose the single MOST UNIQUELY relevant shloka to THIS problem "
             "from the Options provided. If multiple shlokas could fit, pick the ONE that addresses the core "
             "emotion/action of THIS particular situation and NOT a generic life lesson. Do NOT provide a second shloka.\n"
-            f'   Format: "{shloka_format}" then the Sanskrit verse in Devanagari. '
+            f'   Format: "📖 Стих:\n{shloka_format}" then the Sanskrit verse in Devanagari. '
             'NEVER include the verse number at the end of the verse (e.g., no "|| XX ||").\n'
-            f"3. EXPLAIN in 2-3 sentences in {target_lang}: connect THIS specific shloka's message to THIS specific "
+            f"3. Heading '💡 Толкование:' then EXPLAIN in 2-3 sentences in {target_lang}: connect THIS specific shloka's message to THIS specific "
             "problem. No generic filler \u2014 the explanation must be impossible to copy to a different question.\n"
-            f"4. ACTION: Give EXACTLY 2 steps in {target_lang}. NO MORE, NO LESS. Each step must be numbered "
+            f"4. Heading '🌈 Путь к действию:' then give EXACTLY 2 steps in {target_lang}. NO MORE, NO LESS. Each step must be numbered "
             "(1. and 2.) and be a DIFFERENT, CONCRETE action tailored to this exact situation. "
             "Do NOT provide a 3rd or 4th step under any circumstance.\n"
             "5. NO REPETITION: Do NOT repeat the Sanskrit verse, the shloka reference, or any explanation block. "
