@@ -346,7 +346,7 @@ def ask_question():
         print(f"Question: {question[:30]}...")
         
         session_id = data.get('session_id')  # New: Session ID for context filtering
-        language = data.get('language', 'russian') # 'russian', 'japanese' or 'english'
+        language = data.get('language', 'russian') # 'russian' or 'english'
         
         # Check chat access for logged-in users
         if user_id:
@@ -441,11 +441,8 @@ def ask_question():
             "sup", "wassup", "whatsup", "howdy", "hola",
             "kaise ho", "kaise hain", "kya haal", "kya hal", "namaskaar",
 
-            # Japanese Greetings (Romaji & Kana/Kanji)
-            "konnichiwa", "ohayo", "ohayou", "konbanwa", "oyasumi", "hajimemashite", "yoroshiku",
-            "\u3053\u3093\u306b\u3061\u306f", "\u304a\u306f\u3088\u3046", "\u3053\u3093\u3070\u3093\u306f",
-            # Devanagari versions of Japanese (for accent issues)
-            "\u0915\u094b\u0928\u0940\u091a\u0940\u0935\u093e", "\u0913\u0939\u093e\u092f\u094b", "\u0915\u094b\u0928\u092c\u093e\u0928\u0935\u093e"
+            # Casual/Greetings
+            "hola", "namaskaar",
         }
         
         import unicodedata
@@ -496,7 +493,7 @@ def ask_question():
                 history = get_user_history(user_id, session_id=session_id, limit=1)
                 has_history = len(history) > 0
             
-            # Always return Japanese format greeting
+            # Return greeting in Russian format
             if has_history:
                 greeting_text = "Namaste! Надеюсь, вы узнали что-то полезное из нашего прошлого разговора. С каким вопросом вы пришли сегодня?"
             else:
@@ -787,16 +784,20 @@ def transcribe_audio():
 
         # Call Groq
         with open(temp_path, "rb") as file:
+            # Select language hint and prompt for Whisper
             if language == 'english':
-                prompt_str = "The user is speaking in English. Please transcribe in English. Namaste, how are you? What does the Gita say about karma?"
+                prompt_str = "The user is asking a question to Lord Krishna in English. Please transcribe clearly. Bhagavad Gita, Krishna, Karma, Dharma, Soul."
+                lang_code = "en"
             else:
-                # Default: Russian — Whisper should focus on Cyrillic transcription
-                prompt_str = "The user is speaking in Russian. Please ALWAYS transcribe in Cyrillic script. Привет, как дела? Что говорит Бхагавад-гита о карме? Как найти покой?"
+                # Default: Russian — Focus on Cyrillic transcription, allowing for common spiritual terms
+                prompt_str = "Разговор с Господом Кришной на русском языке. Пожалуйста, используйте кириллицу. Бхагавад-гита, душа, карма, покой, как мне быть?"
+                lang_code = "ru"
                 
             transcription = gita_api.groq_client.audio.transcriptions.create(
                 file=(audio_file.filename, file.read()),
                 model="whisper-large-v3",
                 prompt=prompt_str,
+                language=lang_code
             )
         
         # Cleanup
@@ -817,7 +818,7 @@ def get_audio(audio_id):
     Polls for audio to be ready if still generating.
     """
     import time
-    max_wait = 120  # Increased to 120 seconds for Edge TTS (long Japanese responses)
+    max_wait = 120  # Poll for up to 120 seconds for Edge TTS generation
     start_time = time.time()
     
     print(f"Audio request for ID: {audio_id}")
@@ -2183,7 +2184,7 @@ def reset_password():
     
     # Validate password strength
     password_valid, password_error = validate_password(new_password)
-    # Generic error message in Japanese if validation fails
+    # Error if validation fails
     if not password_valid:
         return jsonify({'error': 'Пароль должен содержать не менее 8 символов, включая прописные и строчные буквы, цифры и специальные символы.', 'success': False}), 400
     

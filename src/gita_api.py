@@ -1338,6 +1338,8 @@ Task:
 
             # Spiritual Concepts
             'dharma', 'धर्म', 'karma', 'कर्म', 'yoga', 'योग', 'bhakti', 'भक्ति', 'gyan', 'jnana',
+            'душа', 'карма', 'дхарма', 'смысл', 'жизнь', 'смерть', 'судьба', 'вера', 'бог', 'кришна',
+            'духовный', 'медитация', 'покой', 'мир', 'страдание', 'освобождение', 'грех', 'истина',
             'atma', 'आत्मा', 'soul', 'spiritual', 'आध्यात्मिक', 'meditation', 'ध्यान', 'puja',
             'moksha', 'मोक्ष', 'liberation', 'enlightenment', 'nirvana', 'samadhi', 'maya', 'illusion',
             'pap', 'paap', 'punya', 'sin', 'virtue', 'divine', 'satya', 'sach', 'truth',
@@ -1527,6 +1529,11 @@ Task:
         # 0.6 AI Understanding & Relevance Check (Smart Gatekeeper)
         understanding = self._understand_query(query)
         
+        # CRITICAL: If regex already confirmed relevance, we trust it over AI classifier
+        # to avoid accidental aggressive rejections of core spiritual terms like "What is karma?"
+        if is_relevant:
+            understanding['is_relevant'] = True
+            
         if not understanding.get('is_relevant', True):
             logger.warning(f"Rejecting irrelevant query (AI): '{query}'")
             rejection_text = """Извините. Я — Шри Кришна, и я могу давать наставления только по глубоким жизненным проблемам, духовности и мудрости Бхагавад-гиты.

@@ -359,8 +359,9 @@ Reply with only: crisis OR distress OR general"""
                     continue
                     
                 # Sentence-level deduplication within the same line
-                # Standard Japanese full stop is '。' or Russian '.'
-                parts = re.split(r'([。?！!.\u0420-\u044F])', clean_line)
+                # Standard Japanese full stop is '。' or Russian/English '.'
+                # Only split at actual sentence delimiters like periods, question marks, etc.
+                parts = re.split(r'([。?！!.;.])', clean_line)
                 new_parts = []
                 seen_sentences = set()
                 
