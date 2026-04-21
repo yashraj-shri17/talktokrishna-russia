@@ -32,6 +32,6 @@ export const API_ENDPOINTS = {
     USER_STATS: `${API_BASE_URL}/api/user/stats`,
 };
 
-export const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '726609881698-91fjcq8psb4rok60etecgt0t226ep6g7.apps.googleusercontent.com';
+export const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '617777461318-r4k9arqp5lid84ien6q3ooirp88i6hmq.apps.googleusercontent.com';
 
 export default API_BASE_URL;

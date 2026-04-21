@@ -65,7 +65,7 @@ if RESEND_API_KEY:
 else:
     print("⚠️ RESEND_API_KEY missing. Email notifications will be disabled.")
 
-GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '726609881698-91fjcq8psb4rok60etecgt0t226ep6g7.apps.googleusercontent.com')
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '617777461318-r4k9arqp5lid84ien6q3ooirp88i6hmq.apps.googleusercontent.com')
 
 # OTP storage (In-memory for login)
 otp_storage = {} # {mobile: {"otp": otp, "expires_at": timestamp, "user_id": user_id}}
