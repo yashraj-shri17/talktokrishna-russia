@@ -590,14 +590,6 @@ def ask_question():
         
         answer_text = result.get('answer')
         
-        # ── ADD HEADING TO ANSWER ─────────────────────────────────────────────
-        # Only add the heading if it's a successful LLM generation and not already present
-        if result.get('llm_used') and answer_text and not result.get('rejected'):
-            if not answer_text.strip().startswith("🪈"):
-                # Always use Russian heading for the Russia platform
-                heading = "🪈 Послание Господа Кришны:\n\n"
-                answer_text = f"{heading}{answer_text}"
-        # ──────────────────────────────────────────────────────────────────────
         all_shlokas = result.get('shlokas', [])
         chosen_shloka_id = result.get('chosen_shloka_id')
         

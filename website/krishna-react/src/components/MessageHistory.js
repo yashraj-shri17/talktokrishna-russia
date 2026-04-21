@@ -60,29 +60,32 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
     const formatMessage = (text) => {
         if (!text) return null;
 
+        // Strip any legacy server-side heading prefix from old DB entries
+        const cleanText = text.replace(/^🪈\s*Послание\s*Господа\s*Кришны:\s*/i, '').trim();
+
         // ── STEP 1: Find the shloka citation as the primary section divider ──
-        // Supports both Russian citation ("Бхагавад-гита, Глава X, Текст Y")
-        // and English citation ("Bhagwat geeta Chapter X Shloka Y")
-        const shlokaCitationMatch = text.match(
+        // Supports Russian: "Бхагавад-гита, Глава X, Текст Y"
+        // and English:      "Bhagwat geeta Chapter X Shloka Y"
+        const shlokaCitationMatch = cleanText.match(
             /((?:Бхагавад-гита|Bhagwat\s*geeta|भगवद\s*गीता),?\s*(?:Глава|Chapter|अध्याय)\s*\d+,?\s*(?:Текст|Shloka|श्लोक)\s*\d+)/i
         );
 
-        // Fallback: plain text (short messages, rejection responses, etc.)
+        // Fallback: render as plain text (rejection messages, short responses, etc.)
         if (!shlokaCitationMatch) {
-            return <div className="message-box general-box"><p>{text}</p></div>;
+            return <div className="message-box general-box"><p>{cleanText}</p></div>;
         }
 
         const citation = shlokaCitationMatch[0];
-        const splitIndex = text.indexOf(citation);
+        const splitIndex = cleanText.indexOf(citation);
 
-        // Part A: everything before the citation → Intro
-        const intro = text.substring(0, splitIndex).trim();
+        // Part A: everything before the citation → Intro (opening sentence)
+        const intro = cleanText.substring(0, splitIndex).trim();
 
-        // Part B: everything from the citation onward
-        const rest = text.substring(splitIndex + citation.length).trim();
+        // Part B: everything after the citation
+        const rest = cleanText.substring(splitIndex + citation.length).trim();
 
-        // ── STEP 2: Split "rest" into shloka verse, explanation, and steps ──
-        // Steps start when we see "1." at the beginning of a line
+        // ── STEP 2: Separate Steps from Shloka+Explanation ──
+        // Steps begin at the first line that starts with "1."
         const stepsMarker = rest.match(/(?:^|\n)\s*1\./m);
         let shlokaAndExplanation = rest;
         let stepsPart = '';
@@ -93,24 +96,48 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
             stepsPart = rest.substring(stepsIndex).trim();
         }
 
-        // Shloka verse ends at ॥ (the traditional Sanskrit end marker)
-        const shlokaEndMarker = shlokaAndExplanation.indexOf('॥');
-        let shlokaText = '';
-        let explanation = shlokaAndExplanation;
+        // ── STEP 3: Split shlokaAndExplanation using Devanagari script detection ──
+        // Lines with Devanagari chars (U+0900–U+097F) = Sanskrit verse → Box 2
+        // First line with Cyrillic or Latin text = start of explanation → Box 3
+        const allLines = shlokaAndExplanation.split('\n').map(l => l.trim()).filter(l => l !== '');
+        const shlokaLines = [];
+        const explanationLines = [];
+        let foundExplanation = false;
 
-        if (shlokaEndMarker !== -1) {
-            shlokaText = shlokaAndExplanation.substring(0, shlokaEndMarker + 1).trim();
-            explanation = shlokaAndExplanation.substring(shlokaEndMarker + 1).trim();
-        } else {
-            // Fallback: use first 2 lines as shloka text
-            const lines = shlokaAndExplanation.split('\n');
-            if (lines.length > 2) {
-                shlokaText = lines.slice(0, 2).join('\n');
-                explanation = lines.slice(2).join('\n').trim();
+        for (const line of allLines) {
+            if (foundExplanation) {
+                explanationLines.push(line);
+                continue;
+            }
+            const hasDevanagari = /[\u0900-\u097F]/.test(line);
+            const hasCyrillic   = /[\u0400-\u04FF]/.test(line);
+            const hasLatin      = /[a-zA-Z]{4,}/.test(line);
+
+            if (hasDevanagari) {
+                // Definitely Sanskrit verse
+                shlokaLines.push(line);
+            } else if (hasCyrillic || hasLatin) {
+                // Switched to explanation language
+                foundExplanation = true;
+                explanationLines.push(line);
+            } else {
+                // Punctuation-only line or transitional — keep in shloka
+                shlokaLines.push(line);
             }
         }
 
-        // ── STEP 3: getBoxTitle — hardcoded Russian labels added by the frontend ──
+        const shlokaText = shlokaLines.join('\n');
+        const explanation = explanationLines.join(' ').trim();
+
+        // ── STEP 4: Render each numbered step as its own paragraph (Bug 3 fix) ──
+        const renderSteps = (rawSteps) => {
+            const lines = rawSteps.split('\n').map(l => l.trim()).filter(l => l !== '');
+            return lines.map((line, i) => (
+                <p key={i} style={{ marginBottom: i < lines.length - 1 ? '10px' : '0' }}>{line}</p>
+            ));
+        };
+
+        // ── STEP 5: hardcoded Russian labels (never generated by AI) ──
         const getBoxTitle = (key) => {
             switch (key) {
                 case 'intro':       return 'Божественное послание';
@@ -123,7 +150,7 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
 
         return (
             <div className="response-boxes">
-                {/* 1. Introduction */}
+                {/* Box 1: Introduction */}
                 {intro && (
                     <div className="message-box opening-box">
                         <span className="box-title">{getBoxTitle('intro')}</span>
@@ -131,7 +158,7 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
                     </div>
                 )}
 
-                {/* 2. Shloka */}
+                {/* Box 2: Shloka (citation + Sanskrit verse) */}
                 <div className="message-box shloka-box">
                     <span className="box-title">{getBoxTitle('shloka')}</span>
                     <div className="shloka-content">
@@ -140,7 +167,7 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
                     </div>
                 </div>
 
-                {/* 3. Explanation */}
+                {/* Box 3: Explanation */}
                 {explanation && (
                     <div className="message-box explanation-box">
                         <span className="box-title">{getBoxTitle('explanation')}</span>
@@ -148,11 +175,11 @@ function MessageHistory({ messages, isOpen, onClose, onClearHistory, onSpeak, ac
                     </div>
                 )}
 
-                {/* 4. Action Steps */}
+                {/* Box 4: Action Steps — each step on its own paragraph */}
                 {stepsPart && (
                     <div className="message-box steps-box">
                         <span className="box-title">{getBoxTitle('steps')}</span>
-                        <p>{stepsPart}</p>
+                        {renderSteps(stepsPart)}
                     </div>
                 )}
             </div>

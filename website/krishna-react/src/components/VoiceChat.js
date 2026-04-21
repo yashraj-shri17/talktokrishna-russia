@@ -474,6 +474,7 @@ function VoiceChat() {
             const krishnaMessageId = Date.now() + 1;
             const krishnaMessage = {
                 id: krishnaMessageId,
+                type: 'krishna',
                 text: response.data.answer || 'Извините, сейчас я не могу ответить.',
                 timestamp: new Date()
             };
