@@ -154,8 +154,8 @@ def _azure_tts_combined_russian(
     body = ''
     if before_text.strip():
         body += f'<prosody rate="{std_r}">{before_text}</prosody>'
-    # NOTE: header_text (e.g. "Bhagavad Gita Chapter X Shloka Y") is intentionally
-    # skipped here — reading an English citation mid-Russian speech sounds broken.
+    if header_text.strip():
+        body += f'<prosody rate="{std_r}">{header_text}</prosody>'
     if verse_text.strip():
         # Shlokas are in Sanskrit, so switch voice to Aarav for this part
         body += (
@@ -351,8 +351,7 @@ def _generate_audio_async(text: str, language: str = 'russian') -> str:
                         return b.getvalue()
                     tasks = []
                     if before: tasks.append(_gen_part(before, v_main, "+5%"))
-                    # Skip header (citation like "Bhagavad Gita Ch X Shloka Y") for Russian
-                    if header and language != 'russian': tasks.append(_gen_part(header, v_main, "+5%"))
+                    if header: tasks.append(_gen_part(header, v_main, "+5%"))
                     if verse:  tasks.append(_gen_part(verse, v_slk, "-5%"))
                     if after:  tasks.append(_gen_part(after, v_main, "+5%"))
                     if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+5%"))
@@ -886,8 +885,7 @@ def speak_text():
             async def _gen_all():
                 tasks = []
                 if before: tasks.append(_gen_part(before, v_main, "+5%"))
-                # Skip header (citation like "Bhagavad Gita Ch X Shloka Y") for Russian
-                if header and language != 'russian': tasks.append(_gen_part(header, v_main, "+5%"))
+                if header: tasks.append(_gen_part(header, v_main, "+5%"))
                 if verse:  tasks.append(_gen_part(verse, v_slk, "-5%"))
                 if after:  tasks.append(_gen_part(after, v_main, "+5%"))
                 if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+5%"))
