@@ -141,14 +141,14 @@ def _azure_tts_combined_russian(
     header_text: str = '',
     verse_text:  str = '',
     after_text:  str = '',
-    standard_rate: int = 0,
+    standard_rate: int = 5,
     shloka_rate:   int = -5,
 ) -> bytes:
     """Russian specific Azure TTS call using SSML for multi-part synthesis."""
     if not _AZURE_SDK_AVAILABLE or not AZURE_SPEECH_KEY:
         return b''
 
-    std_r  = f"+{standard_rate}%" if standard_rate > 0 else (f"{standard_rate}%" if standard_rate < 0 else "+0%")
+    std_r  = f"+{standard_rate}%" if standard_rate >= 0 else f"{standard_rate}%"
     slk_r  = f"+{shloka_rate}%"  if shloka_rate  >= 0 else f"{shloka_rate}%"
 
     body = ''
@@ -350,11 +350,11 @@ def _generate_audio_async(text: str, language: str = 'russian') -> str:
                             if chunk["type"] == "audio": b.write(chunk["data"])
                         return b.getvalue()
                     tasks = []
-                    if before: tasks.append(_gen_part(before, v_main, "+0%"))
-                    if header: tasks.append(_gen_part(header, v_main, "+0%"))
+                    if before: tasks.append(_gen_part(before, v_main, "+5%"))
+                    if header: tasks.append(_gen_part(header, v_main, "+5%"))
                     if verse:  tasks.append(_gen_part(verse, v_slk, "-5%"))
-                    if after:  tasks.append(_gen_part(after, v_main, "+0%"))
-                    if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+0%"))
+                    if after:  tasks.append(_gen_part(after, v_main, "+5%"))
+                    if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+5%"))
                     return b''.join(await asyncio.gather(*tasks))
 
                 loop = asyncio.new_event_loop()
@@ -884,11 +884,11 @@ def speak_text():
 
             async def _gen_all():
                 tasks = []
-                if before: tasks.append(_gen_part(before, v_main, "+0%"))
-                if header: tasks.append(_gen_part(header, v_main, "+0%"))
+                if before: tasks.append(_gen_part(before, v_main, "+5%"))
+                if header: tasks.append(_gen_part(header, v_main, "+5%"))
                 if verse:  tasks.append(_gen_part(verse, v_slk, "-5%"))
-                if after:  tasks.append(_gen_part(after, v_main, "+0%"))
-                if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+0%"))
+                if after:  tasks.append(_gen_part(after, v_main, "+5%"))
+                if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+5%"))
                 results = await asyncio.gather(*tasks)
                 return b''.join(results)
 
