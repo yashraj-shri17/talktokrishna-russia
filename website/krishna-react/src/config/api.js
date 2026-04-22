@@ -1,7 +1,7 @@
 // API Configuration
 // This file centralizes all API endpoint URLs
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://talk-to-krishna-japan.onrender.com';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://talktokrishna-russia-testing.onrender.com';
 
 export const API_ENDPOINTS = {
     // Authentication
