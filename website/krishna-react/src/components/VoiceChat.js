@@ -321,10 +321,11 @@ function VoiceChat() {
             audio.setAttribute('webkit-playsinline', 'true');
 
             let src;
+            const languageProp = languageOverride || selectedLanguage || 'russian';
+
             if (fullUrl) {
                 src = fullUrl; // Use pre-resolved URL (blob or server path)
             } else {
-                const languageProp = languageOverride || selectedLanguage || 'russian';
                 const response = await axios.post(API_ENDPOINTS.SPEAK, { text, language: languageProp }, { responseType: 'blob', timeout: 60000 });
                 src = URL.createObjectURL(response.data);
             }
@@ -336,13 +337,44 @@ function VoiceChat() {
                 activeMessageIdRef.current = null;
                 setIsSpeaking(false);
                 setActiveMessageId(null);
-                // NOTE: Do NOT call onEnd() here — a cancellation should not chain
-                // Part2 of a multi-part greeting. onEnd is only for natural completion.
                 return;
             }
 
             audio.src = src;
             audio.load();
+
+            // ── Fallback: If /api/audio/<id> fails (timeout/500 on Render),
+            // silently retry using /api/speak directly instead of going silent.
+            audio.onerror = async () => {
+                console.warn('⚠️ [Audio] URL failed to load, falling back to /api/speak:', src);
+                if (src && src.startsWith('blob:')) URL.revokeObjectURL(src);
+                try {
+                    const fallbackResp = await axios.post(API_ENDPOINTS.SPEAK, { text, language: languageProp }, { responseType: 'blob', timeout: 60000 });
+                    const fallbackSrc = URL.createObjectURL(fallbackResp.data);
+                    audio.onerror = null; // Prevent infinite retry loop
+                    audio.src = fallbackSrc;
+                    audio.load();
+                    audio.onended = () => {
+                        isSpeakingRef.current = false;
+                        activeMessageIdRef.current = null;
+                        URL.revokeObjectURL(fallbackSrc);
+                        setIsSpeaking(false);
+                        setActiveMessageId(null);
+                        if (musicIsActive) fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
+                        if (onEnd && typeof onEnd === 'function') onEnd();
+                    };
+                    await audio.play();
+                    console.log('✅ [Audio] Fallback /api/speak playback started.');
+                } catch (fallbackErr) {
+                    console.error('❌ [Audio] Fallback also failed:', fallbackErr);
+                    isSpeakingRef.current = false;
+                    activeMessageIdRef.current = null;
+                    setIsSpeaking(false);
+                    setActiveMessageId(null);
+                    if (musicIsActive) fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
+                    if (onEnd && typeof onEnd === 'function') onEnd();
+                }
+            };
 
             audio.onended = () => {
                 isSpeakingRef.current = false;
@@ -350,19 +382,11 @@ function VoiceChat() {
                 if (src.startsWith('blob:')) URL.revokeObjectURL(src);
 
                 if (chainNext && onEnd && typeof onEnd === 'function') {
-                    // MPA Part1→Part2 chain: keep React isSpeaking=true so the orb
-                    // doesn't flicker off between parts. The chained speakText takes over.
                     onEnd();
                 } else {
-                    // True end of speech (Part2 final, or single-pass) — reset orb now.
                     setIsSpeaking(false);
                     setActiveMessageId(null);
-
-                    // Resume music after Krishna finishes speaking
-                    if (musicIsActive) {
-                        fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
-                    }
-
+                    if (musicIsActive) fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
                     if (onEnd && typeof onEnd === 'function') onEnd();
                 }
             };
