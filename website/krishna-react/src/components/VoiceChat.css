@@ -245,7 +245,8 @@
     }
 
     .chat-limit-badge {
-        bottom: 70px; /* Higher on mobile to avoid overlapping OS controls/tab bars */
+        bottom: 70px;
+        /* Higher on mobile to avoid overlapping OS controls/tab bars */
     }
 }
 
@@ -282,7 +283,8 @@
 .modal-back-button {
     position: absolute;
     top: 15px;
-    left: 15px; /* Also moved to top-left to better represent "back" */
+    left: 15px;
+    /* Also moved to top-left to better represent "back" */
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -300,7 +302,8 @@
 .modal-back-button:hover {
     background: rgba(255, 255, 255, 0.15);
     color: white;
-    transform: translateX(-2px); /* Subtle nudge to the left */
+    transform: translateX(-2px);
+    /* Subtle nudge to the left */
     border-color: rgba(255, 255, 255, 0.3);
 }
 
@@ -470,10 +473,12 @@
 .history-toggle-new:hover svg {
     transform: rotate(-15deg);
 }
+
 /* Chat Limit Badge */
 .chat-limit-badge {
     position: absolute;
-    bottom: 25px; /* Default for Laptop - Very low */
+    bottom: 25px;
+    /* Default for Laptop - Very low */
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -526,14 +531,29 @@
 }
 
 @keyframes slideInLeft {
-    from { transform: translateX(-50px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+    from {
+        transform: translateX(-50px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
 
 @keyframes pulseCritical {
-    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-    70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
 }
 
 /* Limit Overlay */
@@ -567,8 +587,15 @@
 }
 
 @keyframes modalPop {
-    from { transform: scale(0.8); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+    from {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
 
 .limit-modal-icon {
@@ -634,6 +661,13 @@
 }
 
 @keyframes fadeInUp {
-    from { transform: translateX(-50%) translateY(20px); opacity: 0; }
-    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    from {
+        transform: translateX(-50%) translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+    }
 }

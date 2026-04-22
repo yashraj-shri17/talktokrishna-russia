@@ -37,11 +37,11 @@ function VoiceChat() {
         remaining: 5,
         limit_reached: false
     });
-    
+
     // Parse query params for active state
     const searchParams = new URLSearchParams(location.search);
     const isActiveParam = searchParams.get('active') === 'true';
-    
+
     // Use the URL param to drive the modal state
     const [showLanguageModal, setShowLanguageModal] = useState(!isActiveParam);
     const [selectedLanguage, setSelectedLanguage] = useState(null);
@@ -377,7 +377,7 @@ function VoiceChat() {
             activeMessageIdRef.current = null;
             setIsSpeaking(false);
             setActiveMessageId(null);
-            
+
             // Resume music on error
             if (musicIsActive) {
                 fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
@@ -441,7 +441,7 @@ function VoiceChat() {
             timestamp: new Date()
         };
         setMessages(prev => [...prev, userMessage]);
-        
+
         // ---- REAL-TIME UI UPDATE START ----
         // Pre-emptively update usage count on UI for immediate feedback
         if (user?.id && !chatLimitInfo.is_paid) {
@@ -514,7 +514,7 @@ function VoiceChat() {
 
         } catch (error) {
             console.error('Error:', error);
-            
+
             // Check for limit reached error
             if (error.response?.status === 403 && error.response?.data?.limit_reached) {
                 setChatLimitInfo(prev => ({
@@ -785,12 +785,12 @@ function VoiceChat() {
                     if (audioChunksRef.current.length > 0) {
                         // Keep using webm for the blob to not confuse backed
                         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
-                        
+
                         // Resume music after recording stops (it will duck again if Krishna speaks)
                         if (ENABLE_DIVINE_MUSIC && !divineStoppedForSessionRef.current) {
                             fadeDivineMusic(NORMAL_MUSIC_VOLUME, 800);
                         }
-                        
+
                         await handleAudioUpload(audioBlob);
                     }
                 };
@@ -894,8 +894,8 @@ function VoiceChat() {
             {showLanguageModal && (
                 <div className="language-modal-overlay">
                     <div className="language-modal">
-                        <button 
-                            className="modal-back-button" 
+                        <button
+                            className="modal-back-button"
                             onClick={() => navigate('/')}
                             title="Вернуться на главную"
                         >
@@ -1049,7 +1049,7 @@ function VoiceChat() {
                         <div className="limit-modal-icon">🔒</div>
                         <h3>Лимит исчерпан</h3>
                         <p>Вы достигли бесплатного лимита. Пожалуйста, обновите тариф, чтобы продолжить диалог.</p>
-                        <button 
+                        <button
                             className="upgrade-btn-primary"
                             onClick={() => {
                                 const basicPlan = {
@@ -1074,7 +1074,7 @@ function VoiceChat() {
                         >
                             Обновить сейчас
                         </button>
-                        <button 
+                        <button
                             className="limit-close-btn"
                             onClick={() => navigate('/')}
                         >

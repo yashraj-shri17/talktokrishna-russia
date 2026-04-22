@@ -24,7 +24,7 @@ function Pricing() {
     const plans = [
         {
             name: 'Месячный план',
-            price: '8 990 ₽',
+            price: '10 000 ₽',
             period: '/мес',
             description: 'Идеально для ежемесячных духовных бесед',
             features: [
@@ -41,7 +41,7 @@ function Pricing() {
         },
         {
             name: 'Премиум план',
-            price: '53 990 ₽',
+            price: '22 000 ₽',
             period: '/год',
             description: 'Годовой план для тех, кто ищет лучший опыт',
             features: [

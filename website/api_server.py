@@ -55,6 +55,9 @@ AUDIO_DIR = os.path.join(os.path.dirname(__file__), 'audio_cache')
 if not os.path.exists(AUDIO_DIR):
     os.makedirs(AUDIO_DIR)
 
+# In-memory audio cache for fast serving
+audio_cache = {}
+
 # ---------------------------------------------------------------------------
 # Email & Auth Configuration
 # ---------------------------------------------------------------------------
@@ -70,151 +73,299 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '617777461318-r4k9arqp5lid84ien
 # OTP storage (In-memory for login)
 otp_storage = {} # {mobile: {"otp": otp, "expires_at": timestamp, "user_id": user_id}}
 
-# In-memory audio cache for fast serving
-audio_cache = {}
+# ---------------------------------------------------------------------------
+# Azure Cognitive Services TTS helper
+# ---------------------------------------------------------------------------
+try:
+    import azure.cognitiveservices.speech as speechsdk
+    _AZURE_SDK_AVAILABLE = True
+except ImportError:
+    _AZURE_SDK_AVAILABLE = False
+    print("[TTS] azure-cognitiveservices-speech not installed — falling back to Edge TTS.")
 
-async def _generate_multi_voice_audio(text: str, buffer: io.BytesIO, language: str = 'russian'):
-    """
-    Detect language parts and generate audio using multiple voices sequentially.
-    """
+AZURE_SPEECH_KEY    = os.getenv('AZURE_SPEECH_KEY', '')
+AZURE_SPEECH_REGION = os.getenv('AZURE_SPEECH_REGION', 'centralindia')
+
+# Azure TTS voice names
+AZURE_HINDI_VOICE_NAME    = "hi-IN-AaravNeural"       # Aarav — Hindi
+AZURE_ENGLISH_VOICE       = "en-IN-AaravNeural"       # Aarav — English (India-hosted)
+AZURE_RUSSIAN_VOICE       = "ru-RU-DmitryNeural"      # Dmitry — Russian
+
+def _azure_tts_combined_hindi(
+    before_text: str = '',
+    header_text: str = '',
+    verse_text:  str = '',
+    after_text:  str = '',
+    standard_rate: int = 5,
+    shloka_rate:   int = -5,
+) -> bytes:
+    if not _AZURE_SDK_AVAILABLE or not AZURE_SPEECH_KEY:
+        return b''
+
+    std_r  = f"+{standard_rate}%" if standard_rate >= 0 else f"{standard_rate}%"
+    slk_r  = f"+{shloka_rate}%"  if shloka_rate  >= 0 else f"{shloka_rate}%"
+
+    body = ''
+    if before_text.strip():
+        body += f'<prosody rate="{std_r}" volume="+25%">{before_text}</prosody>'
+    if header_text.strip():
+        body += f'<prosody rate="{std_r}" volume="+25%">{header_text}</prosody>'
+    if verse_text.strip():
+        body += (
+            f'<break time="450ms"/>'
+            f'<prosody rate="{slk_r}" volume="+25%">{verse_text}</prosody>'
+            f'<break time="300ms"/>'
+        )
+    if after_text.strip():
+        body += f'<prosody rate="{std_r}" volume="+25%">{after_text}</prosody>'
+
+    if not body: return b''
+
+    ssml = (
+        f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="hi-IN">'
+        f'<voice name="{AZURE_HINDI_VOICE_NAME}">{body}</voice>'
+        f'</speak>'
+    )
+
+    speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
+    speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz128KBitRateMonoMp3)
+    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+    result = synthesizer.speak_ssml_async(ssml).get()
+
+    if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+        return result.audio_data
+    return b''
+
+def _azure_tts_combined_russian(
+    before_text: str = '',
+    header_text: str = '',
+    verse_text:  str = '',
+    after_text:  str = '',
+    standard_rate: int = 5,
+    shloka_rate:   int = -5,
+) -> bytes:
+    """Russian specific Azure TTS call using SSML for multi-part synthesis."""
+    if not _AZURE_SDK_AVAILABLE or not AZURE_SPEECH_KEY:
+        return b''
+
+    std_r  = f"+{standard_rate}%" if standard_rate >= 0 else f"{standard_rate}%"
+    slk_r  = f"+{shloka_rate}%"  if shloka_rate  >= 0 else f"{shloka_rate}%"
+
+    body = ''
+    if before_text.strip():
+        body += f'<prosody rate="{std_r}">{before_text}</prosody>'
+    if header_text.strip():
+        body += f'<prosody rate="{std_r}">{header_text}</prosody>'
+    if verse_text.strip():
+        # Shlokas are in Sanskrit, so switch voice to Aarav for this part
+        body += (
+            f'<break time="450ms"/>'
+            f'</voice><voice name="{AZURE_HINDI_VOICE_NAME}">'
+            f'<prosody rate="{slk_r}" volume="+25%">{verse_text}</prosody>'
+            f'</voice><voice name="{AZURE_RUSSIAN_VOICE}">'
+            f'<break time="300ms"/>'
+        )
+    if after_text.strip():
+        body += f'<prosody rate="{std_r}">{after_text}</prosody>'
+
+    if not body: return b''
+
+    ssml = (
+        f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ru-RU">'
+        f'<voice name="{AZURE_RUSSIAN_VOICE}">{body}</voice>'
+        f'</speak>'
+    )
+
+    speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
+    speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz128KBitRateMonoMp3)
+    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+    result = synthesizer.speak_ssml_async(ssml).get()
+
+    if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+        return result.audio_data
+    return b''
+
+def _azure_tts_parallel_rest(tasks_list, rest_url, headers):
+    """Generic REST parallel synthesis for voices where SDK serialization is an issue."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    def _rest_synth(task):
+        key, voice, lang, rate, text, with_breaks, volume = task
+        if not text.strip(): return b''
+        inner = (
+            f'<break time="450ms"/>'
+            f'<prosody rate="{rate}" volume="{volume}">{text}</prosody>'
+            f'<break time="300ms"/>'
+        ) if with_breaks else f'<prosody rate="{rate}" volume="{volume}">{text}</prosody>'
+        ssml = (
+            f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{lang}">'
+            f'<voice name="{voice}">{inner}</voice>'
+            f'</speak>'
+        )
+        resp = requests.post(rest_url, headers=headers, data=ssml.encode('utf-8'), timeout=30)
+        resp.raise_for_status()
+        return resp.content
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(tasks_list)) as executor:
+        future_map = {executor.submit(_rest_synth, t): t[0] for t in tasks_list}
+        for future in as_completed(future_map):
+            results[future_map[future]] = future.result()
+    
+    return b''.join([results[k] for k in ('pre', 'verse', 'post') if k in results])
+
+def _azure_tts_english_parallel(before_text='', header_text='', verse_text='', after_text='', eng_rate=10, shloka_rate=-5):
+    if not AZURE_SPEECH_KEY: return b''
+    url = f"https://{AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"
+    headers = {"Ocp-Apim-Subscription-Key": AZURE_SPEECH_KEY, "Content-Type": "application/ssml+xml", "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3", "User-Agent": "TalkToKrishna"}
+    eng_r = f"+{eng_rate}%" if eng_rate >= 0 else f"{eng_rate}%"
+    slk_r = f"+{shloka_rate}%" if shloka_rate >= 0 else f"{shloka_rate}%"
+    
+    eng_pre = ' '.join(filter(None, [before_text.strip(), header_text.strip()]))
+    tasks = []
+    if eng_pre: tasks.append(('pre', AZURE_ENGLISH_VOICE, 'en-IN', eng_r, eng_pre, False, '+25%'))
+    if verse_text.strip(): tasks.append(('verse', AZURE_HINDI_VOICE_NAME, 'hi-IN', slk_r, verse_text.strip(), True, '+25%'))
+    if after_text.strip(): tasks.append(('post', AZURE_ENGLISH_VOICE, 'en-IN', eng_r, after_text.strip(), False, '+25%'))
+    return _azure_tts_parallel_rest(tasks, url, headers)
+
+
+def _clean_text_for_tts(text: str) -> str:
+    """Clean answer text before TTS: removes emojis, redundant citations, and narrator markers."""
     import re
-    # Clean text but keep structure for language detection
-    clean_text = re.sub(r'<[^>]*>', '', text)
+    emoji_pattern = re.compile("["
+        "\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF"
+        "\U00002702-\U000027B0\U000024C2-\U0001F251\u2600-\u26FF\u2700-\u27BF\uFE00-\uFE0F\u200d"
+    "]+", flags=re.UNICODE)
+    text = emoji_pattern.sub('', text)
     
-    lines = clean_text.split('\n')
-    segments = []
+    trailing_citation = re.compile(r'\s*(?:भगवद\s*गीता|Бхагавад-гита|Bhagavad\s*Gita)[,،\s]*(?:अध्याय|Глава|Chapter)\s*\d+[,،\s]*(?:श्लोक|Текст|Shloka)\s*\d+\s*$', re.UNICODE | re.IGNORECASE)
+    text = trailing_citation.sub('', text).strip()
     
-    # Select default voice based on target language
-    if language == 'russian':
-        default_voice = "ru-RU-DmitryNeural"
-    else:
-        default_voice = "en-IN-PrabhatNeural"
-        
-    current_voice = default_voice
-    current_text_lines = []
+    text = re.sub(r'([।॥|])\s*[0-9०-९]+\s*[।॥|]?', r'\1', text)
     
+    narrator_pattern = re.compile(r'(?:(?:श्री\s*)?भगवानुवाच|(?:Shri\s*)?Bhagavan\s*uvacha|(?:Shri\s*)?Krishna\s*uvacha|श्रीकृष्ण\s*उवाच|Sanjaya\s*uvacha|Arjuna\s*uvacha|Dhritarashtra\s*uvacha|सञ्जय\s*उवाच|धृतराष्ट्र\s*उवाच|अर्जुन\s*उवाच)[:\s]*', re.IGNORECASE | re.UNICODE)
+    text = narrator_pattern.sub('', text)
+    
+    text = re.sub(r'\*\*', '', text)  # Bold
+    text = re.sub(r'^\s*[\*\-]\s+', '', text, flags=re.MULTILINE) # List bullets
+    text = re.sub(r'(?<!\*)\*(?!\*)', '', text) # Single asterisks
+    text = re.sub(r'#+\s+', '', text) # Headers
+    return text.strip()
+
+def _split_text_for_tts(text: str):
+    """Splits text into before, header, verse, and after for granular TTS control."""
+    import re
+    lines = text.split('\n')
+    cit_hi = re.compile(r'(?:भगवद\s*गीता|भगवद्गीता|श्रीमद्भगवद्गीता|गीता).*?(?:अध्याय|अ\.).*?(?:श्लोक|श्लो\.|श\.).*?[\d०-९]+', re.UNICODE | re.IGNORECASE)
+    cit_en = re.compile(r'(?:Bhagavad\s*Gita|Gita).*?(?:Chapter|Ch\.?).*?(?:Shloka|Verse|v\.?).*?\d+', re.IGNORECASE)
+    cit_ru = re.compile(r'(?:Бхагавад-гита|Гита).*?(?:Глава|Гл\.).*?(?:Текст|Ст\.|Шл\.).*?[\d]+', re.UNICODE | re.IGNORECASE)
+    
+    sanskrit_line_pattern = re.compile(r'[|॥।]', re.UNICODE)
+    before_lines, header_lines, verse_lines, after_lines = [], [], [], []
+    state = 'before'
+    is_english = False
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
-            if current_text_lines:
-                current_text_lines.append(line)
+            if state == 'before': before_lines.append(line)
+            elif state == 'citation': header_lines.append(line)
+            elif state == 'verse' and verse_lines: verse_lines.append(line)
+            else: after_lines.append(line)
             continue
-            
-        # Detect script type for each line to assign the correct TTS voice:
-        # - Devanagari (Hindi/Sanskrit) → Hindi voice
-        # - Cyrillic (Russian) → Russian voice
-        # - Pure Latin/ASCII (e.g. "Namaste Yash!") → English voice
-        has_devanagari = any('\u0900' <= char <= '\u097F' for char in stripped)
-        has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in stripped)
 
-        if has_devanagari:
-            target_voice = "hi-IN-MadhurNeural"
-        elif has_cyrillic:
-            target_voice = "ru-RU-DmitryNeural"
-        else:
-            # Pure Latin/ASCII line → English voice for natural pronunciation
-            target_voice = "en-IN-PrabhatNeural"
-        
-        if target_voice != current_voice:
-            if current_text_lines:
-                segments.append((current_voice, "\n".join(current_text_lines)))
-            current_text_lines = [line]
-            current_voice = target_voice
-        else:
-            current_text_lines.append(line)
-            
-    if current_text_lines:
-        segments.append((current_voice, "\n".join(current_text_lines)))
-        
-    # Always isolate "Bhagwat geeta Chapter X Shloka Y" (and variations) for English pronunciation
-    refined_segments = []
-    for voice, segment_text in segments:
-        if not segment_text.strip():
-            continue
-            
-        # Split text, capturing variations like "Bhagwat geeta Chapter X Shloka Y" or just "Chapter X Shloka Y"
-        parts = re.split(r'(?i)((?:Bhagwat\s*geeta[\s,]*)?Chapter\s+\d+(?:[\s,]*Shloka\s+\d+)?)', segment_text)
-        
-        for part in parts:
-            if not part.strip():
-                if part:
-                    refined_segments.append((voice, part))
-                continue
-                
-            # If this part is the English chapter/shloka reference, use English voice
-            if re.match(r'(?i)^(?:Bhagwat\s*geeta[\s,]*)?Chapter\s+\d+', part.strip()):
-                refined_segments.append(("en-IN-PrabhatNeural", part))
+        if state == 'before':
+            m_hi, m_en, m_ru = cit_hi.search(stripped), cit_en.search(stripped), cit_ru.search(stripped)
+            if m_hi or m_en or m_ru:
+                if m_en: is_english = True
+                match = m_hi or m_en or m_ru
+                line_after = stripped[match.end():].strip()
+                if line_after and (sanskrit_line_pattern.search(line_after) or any('\u0900' <= c <= '\u097F' for c in line_after)):
+                    header_lines.append(stripped[:match.end()])
+                    verse_lines.append(line_after)
+                    state = 'verse'
+                else:
+                    header_lines.append(line); state = 'citation'
             else:
-                refined_segments.append((voice, part))
+                before_lines.append(line)
+        elif state == 'citation':
+            if cit_hi.search(stripped) or cit_en.search(stripped) or cit_ru.search(stripped):
+                header_lines.append(line)
+            elif any('\u0900' <= c <= '\u097F' for c in stripped):
+                verse_lines.append(line); state = 'verse'
+            else:
+                after_lines.append(line); state = 'after'
+        elif state == 'verse':
+            stop_markers = ['कدم', 'Step', 'Action', 'निष्कर्ष', 'Summary:', 'Маяк', 'Действие']
+            if any(m in stripped for m in stop_markers) or stripped.startswith('**'):
+                after_lines.append(line); state = 'after'; continue
+            
+            has_marker = sanskrit_line_pattern.search(stripped) or '||' in stripped
+            if has_marker:
+                verse_lines.append(line)
+                if '॥' in stripped or '||' in stripped: state = 'after'
+                elif len([l for l in verse_lines if l.strip()]) >= 2: state = 'after'
+            else:
+                if any('\u0900' <= c <= '\u097F' for c in stripped) and len([l for l in verse_lines if l.strip()]) < 4:
+                    verse_lines.append(line)
+                else:
+                    after_lines.append(line); state = 'after'
+        else: after_lines.append(line)
 
-    # Parallel generation tasks
-    async def get_segment_audio(v, t):
-        if not t.strip():
-            return b""
-        r = "+10%" if ("ja-JP" in v or "ru-RU" in v) else "+0%"
-        clean_s = t[:40].replace('\n', ' ')
-        print(f"Starting TTS for [{v}]: {clean_s}...")
-        
-        seg_buffer = io.BytesIO()
-        communicate = edge_tts.Communicate(t, v, rate=r)
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                seg_buffer.write(chunk["data"])
-        return seg_buffer.getvalue()
-
-    # Launch all segments in parallel
-    tasks = [get_segment_audio(v, t) for v, t in refined_segments]
-    segment_audios = await asyncio.gather(*tasks)
-    
-    # Combine results in original order
-    for audio_data in segment_audios:
-        buffer.write(audio_data)
-
+    return '\n'.join(before_lines).strip(), '\n'.join(header_lines).strip(), '\n'.join(verse_lines).strip(), '\n'.join(after_lines).strip(), is_english
 
 def _generate_audio_async(text: str, language: str = 'russian') -> str:
-    """
-    Generate audio asynchronously and cache it.
-    Returns audio_id immediately while generation happens in background.
-    """
+    """Generate audio asynchronously using Azure TTS and cache it."""
     audio_id = str(uuid.uuid4())
-    
     def generate():
         try:
-            import time
-            gen_start = time.time()
-            print(f"Starting TTS generation for audio_id: {audio_id}")
+            print(f"[TTS] Processing {audio_id} | Lang: {language}")
+            cleaned = _clean_text_for_tts(text)
+            cleaned = re.sub(r'<[^>]*>', '', cleaned).strip()
+            before, header, verse, after, detected_en = _split_text_for_tts(cleaned)
+            is_eng = (language == 'english' or detected_en)
             
-            # Clean text
-            import re
-            clean_text = re.sub(r'<[^>]*>', '', text).replace('\n', ' ')
-            print(f"Text length: {len(clean_text)} characters")
-            
-            # Buffer to hold audio in memory
-            audio_buffer = io.BytesIO()
-            
-            # Run async generation with multi-voice support
-            tts_start = time.time()
-            asyncio.run(_generate_multi_voice_audio(text, audio_buffer, language))
-            tts_time = time.time() - tts_start
-            
-            # Reset buffer pointer
-            audio_buffer.seek(0)
-            
-            # Cache the audio data
-            audio_cache[audio_id] = audio_buffer.getvalue()
-            
-            total_time = time.time() - gen_start
-            audio_size = len(audio_cache[audio_id]) / 1024
-            print(f"TTS complete: {tts_time:.2f}s, Total: {total_time:.2f}s, Size: {audio_size:.1f}KB")
-            
+            audio_bytes = b''
+            if _AZURE_SDK_AVAILABLE and AZURE_SPEECH_KEY:
+                try:
+                    if language == 'russian':
+                        audio_bytes = _azure_tts_combined_russian(before, header, verse, after)
+                    elif language == 'hindi':
+                        audio_bytes = _azure_tts_combined_hindi(before, header, verse, after)
+                    elif is_eng:
+                        audio_bytes = _azure_tts_english_parallel(before, header, verse, after)
+                except Exception as e:
+                    print(f"[Azure TTS] SDK/REST Error: {e}")
+
+            if not audio_bytes: # Fallback to Edge TTS
+                async def _edge_gen_all():
+                    v_main = "ru-RU-DmitryNeural" if language == 'russian' else ("en-US-GuyNeural" if is_eng else "hi-IN-MadhurNeural")
+                    v_slk = "hi-IN-MadhurNeural"
+                    async def _part(t, v, r):
+                        if not t.strip(): return b''
+                        b = io.BytesIO()
+                        async for chunk in edge_tts.Communicate(t, v, rate=r).stream():
+                            if chunk["type"] == "audio": b.write(chunk["data"])
+                        return b.getvalue()
+                    tasks = []
+                    if before: tasks.append(_gen_part(before, v_main, "+5%"))
+                    if header: tasks.append(_gen_part(header, v_main, "+5%"))
+                    if verse:  tasks.append(_gen_part(verse, v_slk, "-5%"))
+                    if after:  tasks.append(_gen_part(after, v_main, "+5%"))
+                    if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+5%"))
+                    return b''.join(await asyncio.gather(*tasks))
+
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try: audio_bytes = loop.run_until_complete(_edge_gen_all())
+                finally: loop.close()
+
+            audio_cache[audio_id] = audio_bytes
+            print(f"[TTS] Complete: {audio_id} | Size: {len(audio_bytes)//1024}KB")
         except Exception as e:
-            print(f"Audio generation error: {e}")
-            audio_cache[audio_id] = None
-    
-    # Start generation in background thread
-    thread = threading.Thread(target=generate, daemon=True)
-    thread.start()
-    
+            print(f"[TTS] Error: {e}"); audio_cache[audio_id] = None
+
+    threading.Thread(target=generate, daemon=True).start()
     return audio_id
 
 
@@ -689,9 +840,7 @@ def ask_question():
 
 @app.route('/api/speak', methods=['POST'])
 def speak_text():
-    """
-    Generate audio from text using Neural TTS in-memory (no files saved).
-    """
+    """Generate audio from text using Neural TTS in-memory (Azure or Edge TTS)."""
     try:
         data = request.get_json()
         text = data.get('text', '').strip()
@@ -700,16 +849,55 @@ def speak_text():
         if not text:
             return jsonify({'error': 'No text provided'}), 400
 
-        # Buffer to hold audio in memory
-        audio_buffer = io.BytesIO()
-        
-        # Run async generation with multi-voice support
-        asyncio.run(_generate_multi_voice_audio(text, audio_buffer, language))
+        print(f"[DEBUG] TTS Speak Request - Lang: {language} | Text: {text[:50]}...")
+        cleaned = _clean_text_for_tts(text)
+        cleaned = re.sub(r'<[^>]*>', '', cleaned).strip()
+        before, header, verse, after, detected_en = _split_text_for_tts(cleaned)
+        is_eng = (language == 'english' or detected_en)
 
-        # Reset buffer pointer to beginning
-        audio_buffer.seek(0)
+        audio_bytes = b''
+        # 1. Try Azure TTS first if available
+        if _AZURE_SDK_AVAILABLE and AZURE_SPEECH_KEY:
+            try:
+                if language == 'russian':
+                    audio_bytes = _azure_tts_combined_russian(before, header, verse, after)
+                elif language == 'hindi':
+                    audio_bytes = _azure_tts_combined_hindi(before, header, verse, after)
+                elif is_eng:
+                    audio_bytes = _azure_tts_english_parallel(before, header, verse, after)
+            except Exception as e:
+                print(f"[Azure TTS] SDK/REST Error in /api/speak: {e}")
+
+        # 2. Fallback to Edge TTS if Azure failed or is unavailable
+        if not audio_bytes:
+            v_main = "ru-RU-DmitryNeural" if language == 'russian' else ("en-US-GuyNeural" if is_eng else "hi-IN-MadhurNeural")
+            v_slk = "hi-IN-MadhurNeural"
+            
+            async def _gen_part(t, v, r):
+                if not t.strip(): return b''
+                buf = io.BytesIO()
+                async for chunk in edge_tts.Communicate(t, v, rate=r).stream():
+                    if chunk["type"] == "audio": buf.write(chunk["data"])
+                return buf.getvalue()
+
+            async def _gen_all():
+                tasks = []
+                if before: tasks.append(_gen_part(before, v_main, "+5%"))
+                if header: tasks.append(_gen_part(header, v_main, "+5%"))
+                if verse:  tasks.append(_gen_part(verse, v_slk, "-5%"))
+                if after:  tasks.append(_gen_part(after, v_main, "+5%"))
+                if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+5%"))
+                results = await asyncio.gather(*tasks)
+                return b''.join(results)
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try: audio_bytes = loop.run_until_complete(_gen_all())
+            finally: loop.close()
 
         # Return file from memory
+        audio_buffer = io.BytesIO(audio_bytes)
+        audio_buffer.seek(0)
         return send_file(
             audio_buffer,
             mimetype="audio/mpeg",
@@ -3128,7 +3316,7 @@ def delete_account():
         
         if status == 'deleted':
             conn.close()
-            return jsonify({'error': 'このアカウントは既に削除されています。', 'success': False}), 400
+            return jsonify({'error': 'Этот аккаунт уже удален.', 'success': False}), 400
             
         # 2. Mutate email: example@gmail.com -> example@gmail.com_deleteat_1713333333
         timestamp = int(time.time())
@@ -3150,19 +3338,19 @@ def delete_account():
             
             return jsonify({
                 'success': True,
-                'message': 'アカウントが正常に削除されました。'
+                'message': 'Аккаунт успешно удален.'
             }), 200
             
         except Exception as update_err:
             conn.rollback()
             print(f"❌ Error during email mutation: {update_err}")
-            return jsonify({'error': '削除処理中にエラーが発生しました。', 'success': False}), 500
+            return jsonify({'error': 'Ошибка при удалении.', 'success': False}), 500
         finally:
             conn.close()
             
     except Exception as e:
         print(f"Account deletion error: {e}")
-        return jsonify({'error': '内部サーバーエラーが発生しました。', 'success': False}), 500
+        return jsonify({'error': 'Внутренняя ошибка сервера.', 'success': False}), 500
 
 if __name__ == '__main__':
     print("\n" + "="*70)

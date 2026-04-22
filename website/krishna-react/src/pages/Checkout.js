@@ -28,7 +28,7 @@ function Checkout() {
     const [checkoutComplete, setCheckoutComplete] = useState(false);
     const [isMandateStep, setIsMandateStep] = useState(false);
 
-    const basePriceNum = parseInt(selectedPlan.price.replace(/[₽,]/g, '')) || 0;
+    const basePriceNum = parseInt(selectedPlan.price.replace(/[^\d]/g, '')) || 0;
     const [finalPrice, setFinalPrice] = useState(basePriceNum);
 
     useEffect(() => {

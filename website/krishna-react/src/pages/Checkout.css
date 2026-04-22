@@ -60,6 +60,9 @@
     font-size: 1.5rem;
     font-weight: 800;
     color: var(--primary);
+    white-space: nowrap;
+    margin-left: 1rem;
+    flex-shrink: 0;
 }
 
 .divider {
@@ -73,7 +76,7 @@
 .price-details {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1rem;
 }
 
 .price-row {
@@ -98,6 +101,8 @@
 .final-total {
     color: var(--primary);
     font-size: 2rem !important;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .subscription-info-badge {
@@ -290,23 +295,40 @@
 
 @media (max-width: 768px) {
     .checkout-container {
-        padding-top: 12vh;
+        padding-top: 10vh;
+        padding-bottom: 2rem;
     }
 
     .checkout-actions {
         grid-template-columns: 1fr;
     }
 
+    .plan-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .plan-price-side {
+        margin-left: 0;
+        font-size: 1.25rem;
+    }
+
     .final-total {
-        font-size: 1.5rem !important;
+        font-size: 1.35rem !important;
     }
 
     .checkout-card {
-        padding: 1.5rem;
+        padding: 1.25rem;
     }
 
     .success-content {
-        padding: 3rem 1.5rem;
+        padding: 3rem 1.25rem;
+    }
+
+    .section-title {
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
     }
 }
 
