@@ -341,7 +341,7 @@ def _generate_audio_async(text: str, language: str = 'russian') -> str:
                 async def _edge_gen_all():
                     v_main = "ru-RU-DmitryNeural" if language == 'russian' else ("en-US-GuyNeural" if is_eng else "hi-IN-MadhurNeural")
                     v_slk = "hi-IN-MadhurNeural"
-                    async def _part(t, v, r):
+                    async def _gen_part(t, v, r):
                         if not t.strip(): return b''
                         b = io.BytesIO()
                         async for chunk in edge_tts.Communicate(t, v, rate=r).stream():
