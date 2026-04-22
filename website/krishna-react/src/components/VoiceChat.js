@@ -270,7 +270,7 @@ function VoiceChat() {
         fetchChatLimit();
     }, [user?.id, fetchChatLimit]);
 
-    const speakText = useCallback(async (text, messageId = null, audioUrl = null, onEnd = null, chainNext = false) => {
+    const speakText = useCallback(async (text, messageId = null, audioUrl = null, onEnd = null, chainNext = false, languageOverride = null) => {
         // Use refs to read live values — avoids stale closure bug that stops audio after 1 sec
         if (isSpeakingRef.current && activeMessageIdRef.current === messageId && messageId !== null && !audioUrl) {
             stopAudio();
@@ -324,7 +324,7 @@ function VoiceChat() {
             if (fullUrl) {
                 src = fullUrl; // Use pre-resolved URL (blob or server path)
             } else {
-                const languageProp = selectedLanguage || 'russian';
+                const languageProp = languageOverride || selectedLanguage || 'russian';
                 const response = await axios.post(API_ENDPOINTS.SPEAK, { text, language: languageProp }, { responseType: 'blob', timeout: 60000 });
                 src = URL.createObjectURL(response.data);
             }
@@ -639,27 +639,23 @@ function VoiceChat() {
             );
 
             // STEP 2: Request + play Part1 now (short text → fast TTS, ~300-400ms)
-            // chainNext=true tells speakText NOT to reset isSpeaking when Part1 ends,
-            // so the orb stays active during the handoff to Part2.
+            // chainNext=true tells speakText NOT to reset isSpeaking when Part1 ends.
+            // We force 'english' (Aarav voice) for Namaste to match the spiritual brand.
             speakText(part1Text, msgId, null, async () => {
                 console.log("⚡ [MPA] Part1 done — awaiting pre-fetched Part2...");
                 try {
-                    // Part2 was pre-fetching while Part1 played. Await the result.
                     const response = await part2Promise;
                     const blobSrc = URL.createObjectURL(response.data);
-                    // Play Part2 immediately using its blob URL (no extra network call needed)
-                    // Re-using persistentAudioRef maintains Safari's user-gesture context
-                    // chainNext=false: Part2 is the final segment — orb stops when it ends ✅
                     speakText(part2Text, `${msgId}_p2`, blobSrc, () => {
                         startDivineMusic();
-                    }, false);
+                    }, false); // No languageOverride needed here, defaults to selectedLanguage (Russian)
                 } catch (err) {
                     console.warn("⚡ [MPA] Part2 pre-fetch failed, falling back to dynamic fetch:", err);
                     speakText(part2Text, `${msgId}_p2`, null, () => {
                         startDivineMusic();
                     }, false);
                 }
-            }, true); // chainNext=true: keeps orb alive during Part1→Part2 handoff
+            }, true, 'english'); // Force English voice for "Namaste"
 
         } else {
             // ── SAFE FALLBACK: Original single-pass blocking logic ──────────
