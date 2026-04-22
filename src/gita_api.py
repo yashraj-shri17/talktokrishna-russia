@@ -1315,7 +1315,7 @@ Task:
                          'climate in', 'map of', 'distance between', 'mausam', 'barish', 'dhup',
                          'garmi', 'sardi', 'thand', 'monsoon', 'humidity', 'degree celsius',
                          'bus', 'train', 'flight', 'ticket', 'booking', 'hotel room', 'visa application',
-                         'passport', 'airport', 'railway station', 'directions to', 'gps', 'Russia', 'travel', 'visa', 'visit'],
+                         'passport', 'airport', 'railway station', 'directions to', 'gps', 'Russia', 'travel', 'visa', 'visit',
                          'मौसम', 'बारिश', 'धूप', 'गर्मी', 'सर्दी', 'ठंड', 'तापमान', 'डिग्री',
                          'बस', 'ट्रेन', 'फ्लाइट', 'हवाई जहाज', 'टिकट', 'बुकिंग', 'होटल', 'पासपोर्ट',
                          # Unicode Matches (Guaranteed)
