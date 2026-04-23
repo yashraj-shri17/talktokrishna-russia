@@ -343,7 +343,10 @@ function Checkout() {
                     <div className="checkout-actions">
                         {/* Coupon Form */}
                         <div className="checkout-card coupon-section">
-                            <h3>Использовать купон</h3>
+                            <div className="coupon-header">
+                                <Ticket size={18} />
+                                <h3>Использовать купон</h3>
+                            </div>
                             {!appliedCoupon ? (
                                 <div className="coupon-input-group">
                                     <input
