@@ -96,58 +96,7 @@ EDGE_RUSSIAN_VOICE = "ru-RU-DmitryNeural"
 EDGE_ENGLISH_VOICE = "en-IN-PrabhatNeural"
 EDGE_HINDI_VOICE = "hi-IN-MadhurNeural"
 
-def _azure_tts_combined_hindi(
-    before_text: str = '',
-    header_text: str = '',
-    verse_text:  str = '',
-    after_text:  str = '',
-    standard_rate: int = 10,
-    shloka_rate:   int = -5,
-    voice: str = None
-) -> bytes:
-    if not _AZURE_SDK_AVAILABLE or not AZURE_SPEECH_KEY:
-        return b''
-    v_name = voice or AZURE_HINDI_VOICE_NAME
-    std_r  = f"+{standard_rate}%" if standard_rate >= 0 else f"{standard_rate}%"
-    slk_r  = f"+{shloka_rate}%"  if shloka_rate  >= 0 else f"{shloka_rate}%"
-    
-    # Each part needs its own voice tag if we're switching
-    ssml_parts = []
-    
-    if before_text.strip():
-        ssml_parts.append(f'<voice name="{v_name}"><prosody rate="{std_r}" volume="+25%">{_escape_xml(before_text)}</prosody></voice>')
-    
-    if header_text.strip():
-        ssml_parts.append(f'<voice name="{v_name}"><prosody rate="{std_r}" volume="+25%">{_escape_xml(header_text)}</prosody></voice>')
-        
-    if verse_text.strip():
-        # Shlokas always use Hindi voice
-        ssml_parts.append(f'<voice name="{AZURE_HINDI_VOICE_NAME}"><break time="450ms"/><prosody rate="{slk_r}" volume="+25%">{_escape_xml(verse_text)}</prosody><break time="300ms"/></voice>')
-        
-    if after_text.strip():
-        ssml_parts.append(f'<voice name="{v_name}"><prosody rate="{std_r}" volume="+25%">{_escape_xml(after_text)}</prosody></voice>')
-    
-    if not ssml_parts: return b''
-    
-    body = "".join(ssml_parts)
-    ssml = (
-        f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="hi-IN">'
-        f'{body}'
-        f'</speak>'
-    )
 
-    speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
-    speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz128KBitRateMonoMp3)
-    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
-    result = synthesizer.speak_ssml_async(ssml).get()
-
-    if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-        return result.audio_data
-    else:
-        print(f"❌ [Azure SDK] Error: {result.reason}")
-        if result.reason == speechsdk.ResultReason.Canceled:
-            print(f"   Details: {result.cancellation_details.error_details}")
-    return b''
 def _azure_tts_universal(text, platform_lang='russian'):
     if not _AZURE_SDK_AVAILABLE or not AZURE_SPEECH_KEY: return b''
     lines = text.split('\n')
@@ -158,15 +107,23 @@ def _azure_tts_universal(text, platform_lang='russian'):
         if platform_lang == 'russian': return AZURE_RUSSIAN_VOICE, "ru-RU"
         return AZURE_ENGLISH_VOICE, "en-IN"
     cv, cb = None, []
+    def _get_rate(voice):
+        if voice == AZURE_HINDI_VOICE_NAME: return "-5%"   # Shloka - slow & reverent
+        if voice == AZURE_RUSSIAN_VOICE:    return "+0%"   # Russian - natural pace
+        return "+5%"                                        # English - slightly faster
     for line in lines:
         s = line.strip()
         if not s: continue
         v, l = _get_voice(s)
         if v != cv:
-            if cb: ssml_parts.append(f'<voice name="{cv}"><prosody rate="+10%">{_escape_xml(" ".join(cb))}</prosody></voice>')
+            if cb:
+                rate = _get_rate(cv)
+                ssml_parts.append(f'<voice name="{cv}"><prosody rate="{rate}">{_escape_xml(" ".join(cb))}</prosody></voice>')
             cv, cb = v, [s]
         else: cb.append(s)
-    if cb: ssml_parts.append(f'<voice name="{cv}"><prosody rate="+10%">{_escape_xml(" ".join(cb))}</prosody></voice>')
+    if cb:
+        rate = _get_rate(cv)
+        ssml_parts.append(f'<voice name="{cv}"><prosody rate="{rate}">{_escape_xml(" ".join(cb))}</prosody></voice>')
     if not ssml_parts: return b''
     ssml = f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">{"".join(ssml_parts)}</speak>'
     try:
@@ -177,136 +134,6 @@ def _azure_tts_universal(text, platform_lang='russian'):
         if res.reason == speechsdk.ResultReason.SynthesizingAudioCompleted: return res.audio_data
     except Exception as e: print(f"❌ [Azure Universal] Exception: {e}")
     return b''
-
-def _azure_tts_combined_russian(
-    before_text: str = '',
-    header_text: str = '',
-    verse_text:  str = '',
-    after_text:  str = '',
-    standard_rate: int = 5,
-    shloka_rate:   int = -5,
-) -> bytes:
-    """Russian specific Azure TTS call using SSML for multi-part synthesis."""
-    if not _AZURE_SDK_AVAILABLE or not AZURE_SPEECH_KEY:
-        return b''
-
-    std_r  = f"+{standard_rate}%" if standard_rate >= 0 else f"{standard_rate}%"
-    slk_r  = f"+{shloka_rate}%"  if shloka_rate  >= 0 else f"{shloka_rate}%"
-    
-    ssml_parts = []
-    
-    if before_text.strip():
-        ssml_parts.append(f'<voice name="{AZURE_RUSSIAN_VOICE}"><prosody rate="{std_r}">{_escape_xml(before_text)}</prosody></voice>')
-    
-    if header_text.strip():
-        ssml_parts.append(f'<voice name="{AZURE_RUSSIAN_VOICE}"><prosody rate="{std_r}">{_escape_xml(header_text)}</prosody></voice>')
-        
-    if verse_text.strip():
-        ssml_parts.append(f'<voice name="{AZURE_HINDI_VOICE_NAME}"><break time="450ms"/><prosody rate="{slk_r}" volume="+25%">{_escape_xml(verse_text)}</prosody><break time="300ms"/></voice>')
-        
-    if after_text.strip():
-        ssml_parts.append(f'<voice name="{AZURE_RUSSIAN_VOICE}"><prosody rate="{std_r}">{_escape_xml(after_text)}</prosody></voice>')
-    
-    if not ssml_parts: return b''
-    
-    body = "".join(ssml_parts)
-    ssml = (
-        f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ru-RU">'
-        f'{body}'
-        f'</speak>'
-    )
-
-    speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
-    speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz128KBitRateMonoMp3)
-    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
-    result = synthesizer.speak_ssml_async(ssml).get()
-
-    if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-        return result.audio_data
-    return b''
-
-def _azure_tts_parallel_rest(tasks_list, rest_url, headers):
-    """Generic REST parallel synthesis for voices where SDK serialization is an issue."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    
-    def _rest_synth(task):
-        key, voice, lang, rate, text, with_breaks, volume = task
-        if not text.strip(): return b''
-        
-        # XML Escape the text to prevent SSML parsing errors
-        escaped_text = _escape_xml(text)
-        
-        inner = (
-            f'<break time="450ms"/>'
-            f'<prosody rate="{rate}" volume="{volume}">{escaped_text}</prosody>'
-            f'<break time="300ms"/>'
-        ) if with_breaks else f'<prosody rate="{rate}" volume="{volume}">{escaped_text}</prosody>'
-        
-        ssml = (
-            f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{lang}">'
-            f'<voice name="{voice}">{inner}</voice>'
-            f'</speak>'
-        )
-
-        resp = requests.post(rest_url, headers=headers, data=ssml.encode('utf-8'), timeout=30)
-        resp.raise_for_status()
-        return resp.content
-
-    results = {}
-    with ThreadPoolExecutor(max_workers=len(tasks_list)) as executor:
-        future_map = {executor.submit(_rest_synth, t): t[0] for t in tasks_list}
-        for future in as_completed(future_map):
-            results[future_map[future]] = future.result()
-    
-    return b''.join([results[k] for k in ('pre', 'verse', 'post') if k in results])
-
-def _azure_tts_english_parallel(before_text='', header_text='', verse_text='', after_text='', eng_rate=10, shloka_rate=-5):
-    """Consolidated SSML synthesis for English with Hindi shloka support."""
-    if not AZURE_SPEECH_KEY: return b''
-    
-    rest_url = f"https://{AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"
-    headers = {
-        "Ocp-Apim-Subscription-Key": AZURE_SPEECH_KEY,
-        "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
-        "User-Agent": "TalkToKrishna"
-    }
-    
-    std_r = f"{eng_rate:+d}%"
-    slk_r = f"{shloka_rate:+d}%"
-    
-    body = ''
-    if before_text.strip():
-        body += f'<prosody rate="{std_r}">{_escape_xml(before_text)}</prosody>'
-    if header_text.strip():
-        body += f'<prosody rate="{std_r}">{_escape_xml(header_text)}</prosody>'
-    if verse_text.strip():
-        # Switch to Hindi voice for the shloka part
-        body += (
-            f'<break time="450ms"/>'
-            f'</voice><voice name="{AZURE_HINDI_VOICE_NAME}">'
-            f'<prosody rate="{slk_r}" volume="+25%">{_escape_xml(verse_text)}</prosody>'
-            f'</voice><voice name="{AZURE_ENGLISH_VOICE}">'
-            f'<break time="300ms"/>'
-        )
-    if after_text.strip():
-        body += f'<prosody rate="{std_r}">{_escape_xml(after_text)}</prosody>'
-        
-    if not body: return b''
-    
-    ssml = (
-        f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-IN">'
-        f'<voice name="{AZURE_ENGLISH_VOICE}">{body}</voice>'
-        f'</speak>'
-    )
-    
-    try:
-        resp = requests.post(rest_url, headers=headers, data=ssml.encode('utf-8'), timeout=60)
-        resp.raise_for_status()
-        return resp.content
-    except Exception as e:
-        print(f"[Azure TTS] SDK/REST Error in consolidated English: {e}")
-        return b''
 
 
 
