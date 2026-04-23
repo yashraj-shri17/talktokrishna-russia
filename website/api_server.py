@@ -504,7 +504,7 @@ def ask_question():
                     PAID_LIMIT = 30 # Default
                     if applied_coupon == 'KRISHNA100':
                         PAID_LIMIT = -1 # Unlimited
-                    elif applied_coupon == 'KRISHNA499':
+                    elif applied_coupon == 'KRISHNA499' or applied_coupon == 'POORAFREEHAI':
                         PAID_LIMIT = 30
                     
                     if is_paid_status and PAID_LIMIT != -1 and msg_count >= PAID_LIMIT:
@@ -2578,6 +2578,8 @@ def get_chat_limit():
         PAID_LIMIT = 30
         if applied_coupon == 'KRISHNA100':
             PAID_LIMIT = -1 # Unlimited
+        elif applied_coupon == 'KRISHNA499' or applied_coupon == 'POORAFREEHAI':
+            PAID_LIMIT = 30
         
         remaining = (FREE_LIMIT - message_count) if not is_paid else (PAID_LIMIT - message_count if PAID_LIMIT != -1 else -1)
         limit_reached = (not is_paid and message_count >= FREE_LIMIT) or (is_paid and PAID_LIMIT != -1 and message_count >= PAID_LIMIT)
@@ -3259,6 +3261,17 @@ def validate_coupon():
         if not code:
             return jsonify({'error': 'Coupon code is required', 'success': False}), 400
             
+        # Hardcoded bypass for testing coupon
+        if code == 'POORAFREEHAI':
+            return jsonify({
+                'success': True, 
+                'coupon': {
+                    'code': 'POORAFREEHAI',
+                    'discount_type': 'free_access',
+                    'discount_value': 0
+                }
+            })
+
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
         c.execute('SELECT code, discount_type, discount_value, is_active FROM coupons WHERE code = %s', (code,))
