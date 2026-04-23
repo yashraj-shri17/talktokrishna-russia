@@ -225,7 +225,7 @@ def _split_text_for_tts(text: str):
             else:
                 after += "\n" + ctext
 
-    return before.strip(), header.strip(), verse.strip(), after.strip(), True
+    return before.strip(), header.strip(), verse.strip(), after.strip(), False
 
 def _generate_audio_async(text: str, language: str = 'russian') -> str:
     """Generate audio asynchronously using Azure TTS and cache it."""
@@ -800,12 +800,10 @@ def speak_text():
         # 1. Try Azure TTS first if available
         if _AZURE_SDK_AVAILABLE and AZURE_SPEECH_KEY:
             try:
-                if language == 'russian':
-                    audio_bytes = _azure_tts_combined_russian(before, header, verse, after)
-                elif language == 'hindi':
-                    audio_bytes = _azure_tts_combined_hindi(before, header, verse, after)
-                elif is_eng:
-                    audio_bytes = _azure_tts_english_parallel(before, header, verse, after)
+                # Combine all parts for universal detection
+                all_text = "\n".join(filter(None, [before, header, verse, after]))
+                if not all_text.strip(): all_text = cleaned
+                audio_bytes = _azure_tts_universal(all_text, platform_lang=language)
             except Exception as e:
                 print(f"[Azure TTS] SDK/REST Error in /api/speak: {e}")
 
