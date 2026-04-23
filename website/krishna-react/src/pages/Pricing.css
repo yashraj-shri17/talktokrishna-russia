@@ -449,18 +449,19 @@
     to { transform: rotate(360deg); }
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 768px) {
     .coupon-floating-banner {
-        position: relative;
-        top: 0;
-        right: 0;
-        margin: 20px auto 0;
-        max-width: 600px;
-        animation: fadeInDown 0.6s ease-out;
+        position: fixed; /* Keep it fixed */
+        bottom: 20px;
+        right: 20px;
+        left: 20px; /* Center it on mobile */
+        max-width: none;
+        margin: 0;
+        animation: fadeInUp 0.6s ease-out;
     }
     
     @keyframes floatBanner {
         0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-5px); }
+        50% { transform: translateY(-4px); }
     }
 }
