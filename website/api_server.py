@@ -499,6 +499,16 @@ def ask_question():
                             'messages_used': msg_count,
                             'free_limit': FREE_LIMIT
                         }), 403
+                    
+                    PAID_LIMIT = 30
+                    if is_paid_status and msg_count >= PAID_LIMIT:
+                        return jsonify({
+                            'success': False,
+                            'limit_reached': True,
+                            'error': 'Вы исчерпали свой лимит сообщений. Пожалуйста, продлите подписку, чтобы продолжить.',
+                            'messages_used': msg_count,
+                            'paid_limit': PAID_LIMIT
+                        }), 403
             except Exception as e:
                 print(f"Error checking message limit: {e}")
         # ----------------------------------------
@@ -1603,6 +1613,7 @@ def init_db():
             discount_type TEXT DEFAULT 'free_access',
             discount_value NUMERIC DEFAULT 0,
             is_active BOOLEAN DEFAULT TRUE,
+            show_in_checkout BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -1672,6 +1683,36 @@ def init_db():
         conn.rollback()
         c = conn.cursor()
         print(f"Error checking/migrating discount_value column: {e}")
+    
+    # Migration for coupons table: add show_in_checkout if it doesn't exist
+    try:
+        c.execute("SELECT show_in_checkout FROM coupons LIMIT 1")
+    except errors.UndefinedColumn:
+        conn.rollback()
+        c = conn.cursor()
+        print("Migrating DB: Adding show_in_checkout column to coupons table...")
+        c.execute('ALTER TABLE coupons ADD COLUMN show_in_checkout BOOLEAN DEFAULT TRUE')
+        conn.commit()
+        c = conn.cursor()
+    except Exception as e:
+        conn.rollback()
+        c = conn.cursor()
+        print(f"Error checking/migrating show_in_checkout column: {e}")
+    
+    # Migration for coupons table: add show_in_checkout if it doesn't exist
+    try:
+        c.execute("SELECT show_in_checkout FROM coupons LIMIT 1")
+    except errors.UndefinedColumn:
+        conn.rollback()
+        c = conn.cursor()
+        print("Migrating DB: Adding show_in_checkout column to coupons table...")
+        c.execute('ALTER TABLE coupons ADD COLUMN show_in_checkout BOOLEAN DEFAULT TRUE')
+        conn.commit()
+        c = conn.cursor()
+    except Exception as e:
+        conn.rollback()
+        c = conn.cursor()
+        print(f"Error checking/migrating show_in_checkout column: {e}")
     
     # Conversations table
     c.execute('''
@@ -2507,14 +2548,16 @@ def get_chat_limit():
 
         is_paid = bool(row[0])
         message_count = int(row[1] or 0)
+        PAID_LIMIT = 30
 
         return jsonify({
             'success': True,
             'is_paid': is_paid,
             'messages_used': message_count,
             'free_limit': FREE_LIMIT,
-            'remaining': max(0, FREE_LIMIT - message_count) if not is_paid else -1,
-            'limit_reached': (not is_paid and message_count >= FREE_LIMIT)
+            'paid_limit': PAID_LIMIT,
+            'remaining': (FREE_LIMIT - message_count) if not is_paid else (PAID_LIMIT - message_count),
+            'limit_reached': (not is_paid and message_count >= FREE_LIMIT) or (is_paid and message_count >= PAID_LIMIT)
         })
     except Exception as e:
         print(f"[ERROR] get_chat_limit: {e}")
@@ -2630,8 +2673,8 @@ def verify_payment():
             WHERE razorpay_order_id = %s
         ''', (razorpay_payment_id, razorpay_order_id))
         
-        # 2. Grant chat access to user (Initial access)
-        c.execute('UPDATE users SET has_chat_access = TRUE, is_paid = TRUE WHERE id = %s', (user_id,))
+        # 2. Grant chat access to user (Initial access) and reset message count
+        c.execute('UPDATE users SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0 WHERE id = %s', (user_id,))
         
         conn.commit()
         conn.close()
@@ -2778,7 +2821,7 @@ def razorpay_webhook():
             
             # Renew access
             c.execute('''
-                UPDATE users SET has_chat_access = TRUE, is_paid = TRUE 
+                UPDATE users SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0 
                 WHERE id = (SELECT user_id FROM subscriptions WHERE razorpay_subscription_id = %s LIMIT 1)
             ''', (sub_id,))
             
@@ -2893,8 +2936,8 @@ def grant_free_access():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ''', (user_id, f"FREE_{int(time.time())}", f"FREE_PYMNT_{int(time.time())}", plan_id, 0, 'JPY', receipt_id, 'completed'))
         
-        # 2. Grant access
-        c.execute('UPDATE users SET has_chat_access = TRUE, is_paid = TRUE WHERE id = %s', (user_id,))
+        # 2. Grant access and reset message count
+        c.execute('UPDATE users SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0 WHERE id = %s', (user_id,))
         
         conn.commit()
         conn.close()
@@ -3129,7 +3172,7 @@ def get_coupons():
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT id, code, discount_type, discount_value, is_active, created_at FROM coupons ORDER BY created_at DESC')
+        c.execute('SELECT id, code, discount_type, discount_value, is_active, show_in_checkout, created_at FROM coupons ORDER BY created_at DESC')
         coupons = c.fetchall()
         conn.close()
         return jsonify({'success': True, 'coupons': coupons})
@@ -3151,9 +3194,9 @@ def add_coupon():
         conn = get_db_connection()
         c = conn.cursor()
         c.execute('''
-            INSERT INTO coupons (code, discount_type, discount_value, is_active)
-            VALUES (%s, %s, %s, TRUE)
-        ''', (code, discount_type, discount_value))
+            INSERT INTO coupons (code, discount_type, discount_value, is_active, show_in_checkout)
+            VALUES (%s, %s, %s, TRUE, %s)
+        ''', (code, discount_type, discount_value, data.get('show_in_checkout', True)))
         conn.commit()
         conn.close()
         return jsonify({'message': 'Coupon added successfully', 'success': True})
@@ -3220,6 +3263,45 @@ def delete_coupon(coupon_id):
         conn.commit()
         conn.close()
         return jsonify({'message': 'Coupon deleted successfully', 'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/admin/coupons/<int:coupon_id>/toggle-visibility', methods=['POST'])
+@admin_required
+def toggle_coupon_visibility(coupon_id):
+    try:
+        data = request.get_json()
+        show_in_checkout = data.get('show_in_checkout')
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('UPDATE coupons SET show_in_checkout = %s WHERE id = %s', (show_in_checkout, coupon_id))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': f'Coupon visibility {"enabled" if show_in_checkout else "disabled"} successfully', 'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/active-coupons', methods=['GET'])
+def get_active_coupons():
+    """Returns coupons that are active and marked for checkout visibility."""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute('''
+            SELECT code, discount_type, discount_value 
+            FROM coupons 
+            WHERE is_active = TRUE AND show_in_checkout = TRUE
+            ORDER BY created_at DESC
+        ''')
+        coupons = c.fetchall()
+        conn.close()
+        
+        # Convert numeric values for JSON
+        for cp in coupons:
+            cp['discount_value'] = float(cp['discount_value']) if cp['discount_value'] else 0
+            
+        return jsonify({'success': True, 'coupons': coupons})
     except Exception as e:
         return jsonify({'error': str(e), 'success': False}), 500
 

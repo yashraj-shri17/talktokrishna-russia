@@ -671,3 +671,21 @@
         opacity: 1;
     }
 }
+/* Paid Limit Badge Styling */
+.chat-limit-badge.paid-badge {
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    box-shadow: 0 0 15px rgba(251, 191, 36, 0.1);
+}
+
+.chat-limit-badge.paid-badge .limit-text span {
+    color: #fbbf24;
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+
+.chat-limit-badge.paid-badge:hover {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.5);
+    transform: translateX(-50%) translateY(-3px);
+}
+

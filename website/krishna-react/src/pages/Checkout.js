@@ -30,6 +30,21 @@ function Checkout() {
 
     const basePriceNum = parseInt(selectedPlan.price.replace(/[^\d]/g, '')) || 0;
     const [finalPrice, setFinalPrice] = useState(basePriceNum);
+    const [recommendedCoupons, setRecommendedCoupons] = useState([]);
+
+    useEffect(() => {
+        const fetchRecommendedCoupons = async () => {
+            try {
+                const res = await axios.get(`${API_BASE_URL}/api/active-coupons`);
+                if (res.data.success) {
+                    setRecommendedCoupons(res.data.coupons);
+                }
+            } catch (err) {
+                console.warn('Failed to fetch recommended coupons:', err);
+            }
+        };
+        fetchRecommendedCoupons();
+    }, []);
 
     useEffect(() => {
         if (!location.state?.plan) {
@@ -356,6 +371,57 @@ function Checkout() {
                                 </div>
                             )}
                             {couponError && <p className="coupon-error">{couponError}</p>}
+
+                            {/* Recommended Coupons Chips */}
+                            {!appliedCoupon && recommendedCoupons.length > 0 && (
+                                <div className="recommended-coupons">
+                                    <p className="recommended-title">Рекомендуемые купоны:</p>
+                                    <div className="coupon-chips">
+                                        {recommendedCoupons.map((coupon) => (
+                                            <button
+                                                key={coupon.code}
+                                                className="coupon-chip"
+                                                onClick={() => {
+                                                    setCouponCode(coupon.code);
+                                                    // Trigger apply logic manually since state update is async
+                                                    const autoApply = async () => {
+                                                        setIsLoading(true);
+                                                        setCouponError('');
+                                                        try {
+                                                            const response = await axios.post(`${API_BASE_URL}/api/validate-coupon`, {
+                                                                code: coupon.code
+                                                            });
+                                                            if (response.data.success) {
+                                                                const cp = response.data.coupon;
+                                                                setAppliedCoupon(cp);
+                                                                setCouponCode('');
+                                                                let discountAmount = 0;
+                                                                if (cp.discount_type === 'percentage') {
+                                                                    discountAmount = Math.round((basePriceNum * cp.discount_value) / 100);
+                                                                } else if (cp.discount_type === 'fixed_value') {
+                                                                    discountAmount = Math.round(cp.discount_value);
+                                                                } else if (cp.discount_type === 'free_access') {
+                                                                    discountAmount = basePriceNum;
+                                                                }
+                                                                setFinalPrice(Math.max(0, basePriceNum - discountAmount));
+                                                            }
+                                                        } catch (err) {
+                                                            setCouponError(err.response?.data?.error || 'Ошибка применения');
+                                                        } finally {
+                                                            setIsLoading(false);
+                                                        }
+                                                    };
+                                                    autoApply();
+                                                }}
+                                                disabled={isLoading}
+                                            >
+                                                <Ticket size={14} />
+                                                <span>{coupon.code}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Payment Button */}

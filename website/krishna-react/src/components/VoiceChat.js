@@ -887,11 +887,15 @@ function VoiceChat() {
                 </button>
 
                 {/* Chat Limit Badge */}
-                {!chatLimitInfo.is_paid && user && (
-                    <div className={`chat-limit-badge ${chatLimitInfo.remaining <= 1 ? 'critical' : ''}`}>
-                        <div className="limit-icon">✨</div>
+                {user && (
+                    <div className={`chat-limit-badge ${chatLimitInfo.remaining <= (chatLimitInfo.is_paid ? 5 : 1) ? 'critical' : ''} ${chatLimitInfo.is_paid ? 'paid-badge' : ''}`}>
+                        <div className="limit-icon">{chatLimitInfo.is_paid ? '⭐' : '✨'}</div>
                         <div className="limit-text">
-                            Осталось: <span>{chatLimitInfo.remaining}</span>
+                            {chatLimitInfo.is_paid ? (
+                                <>Лимит: <span>{chatLimitInfo.messages_used}/{chatLimitInfo.paid_limit || 30}</span></>
+                            ) : (
+                                <>Осталось: <span>{chatLimitInfo.remaining}</span></>
+                            )}
                         </div>
                     </div>
                 )}
@@ -1049,37 +1053,44 @@ function VoiceChat() {
                 playsInline
             />
 
-            {/* Chat Limit Reached Overlay */}
-            {chatLimitInfo.limit_reached && !chatLimitInfo.is_paid && (
+            {chatLimitInfo.limit_reached && (
                 <div className="limit-overlay">
                     <div className="limit-modal">
-                        <div className="limit-modal-icon">🔒</div>
-                        <h3>Лимит исчерпан</h3>
-                        <p>Вы достигли бесплатного лимита. Пожалуйста, обновите тариф, чтобы продолжить диалог.</p>
+                        <div className="limit-modal-icon">{chatLimitInfo.is_paid ? '⏳' : '🔒'}</div>
+                        <h3>{chatLimitInfo.is_paid ? 'Лимит сообщений исчерпан' : 'Лимит исчерпан'}</h3>
+                        <p>
+                            {chatLimitInfo.is_paid 
+                                ? 'Вы использовали все 30 сообщений вашего текущего плана. Продлите подписку, чтобы продолжить общение.' 
+                                : 'Вы достигли бесплатного лимита. Пожалуйста, обновите тариф, чтобы продолжить диалог.'}
+                        </p>
                         <button
                             className="upgrade-btn-primary"
                             onClick={() => {
-                                const basicPlan = {
-                                    name: 'Базовый',
-                                    price: '8 990 ₽',
-                                    period: '',
-                                    description: 'Идеально для первого опыта духовных бесед',
-                                    features: [
-                                        '30 чатов',
-                                        'Все функции ИИ-чата',
-                                        'Высокое качество голоса',
-                                        'Доступ 24/7',
-                                        'История бесед'
-                                    ],
-                                    buttonText: 'Начать сейчас',
-                                    isPopular: false,
-                                    color: 'var(--blue-glow)',
-                                    plan_id: 'basic_30'
-                                };
-                                navigate('/checkout', { state: { plan: basicPlan } });
+                                if (chatLimitInfo.is_paid) {
+                                    navigate('/pricing');
+                                } else {
+                                    const basicPlan = {
+                                        name: 'Базовый',
+                                        price: '8 990 ₽',
+                                        period: '',
+                                        description: 'Идеально для первого опыта духовных бесед',
+                                        features: [
+                                            '30 чатов',
+                                            'Все функции ИИ-чата',
+                                            'Высокое качество голоса',
+                                            'Доступ 24/7',
+                                            'История бесед'
+                                        ],
+                                        buttonText: 'Начать сейчас',
+                                        isPopular: false,
+                                        color: 'var(--blue-glow)',
+                                        plan_id: 'basic_30'
+                                    };
+                                    navigate('/checkout', { state: { plan: basicPlan } });
+                                }
                             }}
                         >
-                            Обновить сейчас
+                            {chatLimitInfo.is_paid ? 'Продлить подписку' : 'Обновить сейчас'}
                         </button>
                         <button
                             className="limit-close-btn"

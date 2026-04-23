@@ -40,7 +40,7 @@ const AdminDashboard = () => {
     const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '' });
     const [accessForm, setAccessForm] = useState({ email: '', temporary_password: '', has_access: true });
     const [coupons, setCoupons] = useState([]);
-    const [couponForm, setCouponForm] = useState({ code: '', discount_type: 'free_access', discount_value: '' });
+    const [couponForm, setCouponForm] = useState({ code: '', discount_type: 'free_access', discount_value: '', show_in_checkout: true });
 
     const fetchAnalytics = useCallback(async () => {
         if (!user || user.role !== 'admin') return;
@@ -205,7 +205,7 @@ const AdminDashboard = () => {
             });
             if (response.data.success) {
                 setSuccessMessage('New coupon generated successfully.');
-                setCouponForm({ code: '', discount_type: 'free_access', discount_value: '' });
+                setCouponForm({ code: '', discount_type: 'free_access', discount_value: '', show_in_checkout: true });
                 fetchCoupons();
             }
         } catch (err) {
@@ -238,6 +238,21 @@ const AdminDashboard = () => {
             }
         } catch (err) {
             setError('Status update failed');
+        }
+    };
+
+    const handleToggleVisibility = async (couponId, currentVisibility) => {
+        try {
+            const response = await axios.post(`${API_BASE_URL}/api/admin/coupons/${couponId}/toggle-visibility`, {
+                show_in_checkout: !currentVisibility,
+                admin_id: user.id
+            });
+            if (response.data.success) {
+                setSuccessMessage(response.data.message);
+                fetchCoupons();
+            }
+        } catch (err) {
+            setError('Visibility toggle failed');
         }
     };
 
@@ -390,6 +405,16 @@ const AdminDashboard = () => {
                             />
                         </div>
                     )}
+                    <div className="control-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                        <input
+                            type="checkbox"
+                            id="show_in_checkout"
+                            checked={couponForm.show_in_checkout}
+                            onChange={(e) => setCouponForm({ ...couponForm, show_in_checkout: e.target.checked })}
+                            style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                        />
+                        <label htmlFor="show_in_checkout" style={{ margin: 0, cursor: 'pointer' }}>Show in Checkout (Publicly Visible)</label>
+                    </div>
                     <div className="coupon-submit-wrapper">
                         <button type="submit" className="action-button coupon-submit-btn">
                             <Plus size={18} /> GENERATE
@@ -406,6 +431,7 @@ const AdminDashboard = () => {
                             <th>Type</th>
                             <th>Reward Value</th>
                             <th>Status</th>
+                            <th>Visible</th>
                             <th>Created At</th>
                             <th>Action</th>
                         </tr>
@@ -424,6 +450,15 @@ const AdminDashboard = () => {
                                     <span className={`badge ${coupon.is_active ? 'badge-success' : 'badge-danger'}`}>
                                         {coupon.is_active ? 'ACTIVE' : 'INACTIVE'}
                                     </span>
+                                </td>
+                                <td>
+                                    <button
+                                        className={`badge ${coupon.show_in_checkout ? 'badge-indigo' : 'badge-danger'}`}
+                                        onClick={() => handleToggleVisibility(coupon.id, coupon.show_in_checkout)}
+                                        style={{ cursor: 'pointer', border: 'none' }}
+                                    >
+                                        {coupon.show_in_checkout ? 'VISIBLE' : 'HIDDEN'}
+                                    </button>
                                 </td>
                                 <td>{formatDate(coupon.created_at)}</td>
                                 <td>
