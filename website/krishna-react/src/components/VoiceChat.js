@@ -1063,6 +1063,12 @@ function VoiceChat() {
                                 ? 'Вы использовали все 30 сообщений вашего текущего плана. Продлите подписку, чтобы продолжить общение.' 
                                 : 'Вы достигли бесплатного лимита. Пожалуйста, обновите тариф, чтобы продолжить диалог.'}
                         </p>
+                        {!chatLimitInfo.is_paid && (
+                            <div className="promo-nudge">
+                                <span className="nudge-icon">🎁</span>
+                                <p>Примените <strong>KRISHNA499</strong>, чтобы получить Базовый план за <strong>499 ₽</strong></p>
+                            </div>
+                        )}
                         <button
                             className="upgrade-btn-primary"
                             onClick={() => {

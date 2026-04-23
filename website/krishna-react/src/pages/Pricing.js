@@ -62,6 +62,18 @@ function Pricing() {
         <div className="pricing-page">
             <Navbar />
 
+            {/* Floating Coupon Notification */}
+            <div className="coupon-floating-banner">
+                <div className="coupon-content">
+                    <div className="coupon-icon">🎁</div>
+                    <div className="coupon-text-wrapper">
+                        <span className="coupon-label">СПЕЦИАЛЬНОЕ ПРЕДЛОЖЕНИЕ</span>
+                        <p>Используйте <strong>KRISHNA499</strong> для Базового плана всего за <strong>499 ₽</strong></p>
+                    </div>
+                </div>
+                <div className="coupon-sparkles"></div>
+            </div>
+
             <div className="pricing-container container">
                 <header className="pricing-header">
                     <div className="pricing-badge">

@@ -485,12 +485,12 @@ def ask_question():
             try:
                 conn = get_db_connection()
                 c = conn.cursor()
-                c.execute('SELECT is_paid, COALESCE(message_count, 0) FROM users WHERE id = %s', (user_id,))
+                c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
                 user_limit_row = c.fetchone()
                 conn.close()
                 
                 if user_limit_row:
-                    is_paid_status, msg_count = user_limit_row
+                    is_paid_status, msg_count, applied_coupon = user_limit_row
                     if not is_paid_status and msg_count >= FREE_LIMIT:
                         return jsonify({
                             'success': False,
@@ -500,8 +500,14 @@ def ask_question():
                             'free_limit': FREE_LIMIT
                         }), 403
                     
-                    PAID_LIMIT = 30
-                    if is_paid_status and msg_count >= PAID_LIMIT:
+                    # Dynamic Paid Limit based on coupon
+                    PAID_LIMIT = 30 # Default
+                    if applied_coupon == 'KRISHNA100':
+                        PAID_LIMIT = -1 # Unlimited
+                    elif applied_coupon == 'KRISHNA499':
+                        PAID_LIMIT = 30
+                    
+                    if is_paid_status and PAID_LIMIT != -1 and msg_count >= PAID_LIMIT:
                         return jsonify({
                             'success': False,
                             'limit_reached': True,
@@ -755,16 +761,22 @@ def ask_question():
                 # Re-select after increment to get latest value
                 conn_cl = get_db_connection()
                 c_cl = conn_cl.cursor()
-                c_cl.execute('SELECT is_paid, COALESCE(message_count, 0) FROM users WHERE id = %s', (user_id,))
+                c_cl.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
                 cl_row = c_cl.fetchone()
                 conn_cl.close()
                 if cl_row:
-                    is_p, m_c = cl_row
+                    is_p, m_c, a_c = cl_row
+                    
+                    # Calculate dynamic limit
+                    p_limit = 30
+                    if a_c == 'KRISHNA100': p_limit = -1
+                    
                     chat_limit_info = {
                         'is_paid': bool(is_p),
                         'messages_used': m_c,
-                        'remaining': max(0, 5 - m_c) if not is_p else -1,
-                        'limit_reached': (not is_p and m_c >= 5)
+                        'remaining': (max(0, 5 - m_c) if not is_p else (max(0, p_limit - m_c) if p_limit != -1 else -1)),
+                        'limit_reached': (not is_p and m_c >= 5) or (is_p and p_limit != -1 and m_c >= p_limit),
+                        'is_unlimited': (is_p and p_limit == -1)
                     }
             except Exception as e:
                 print(f"Chat limit re-fetch error: {e}")
@@ -1541,6 +1553,19 @@ def init_db():
         conn.rollback()
         c = conn.cursor()
         print(f"Error checking/migrating message_count: {e}")
+
+    # Migration for coupon_applied in users table
+    try:
+        c.execute("SELECT coupon_applied FROM users LIMIT 1")
+    except errors.UndefinedColumn:
+        conn.rollback()
+        c = conn.cursor()
+        print("Migrating DB: Adding coupon_applied column to users...")
+        c.execute("ALTER TABLE users ADD COLUMN coupon_applied TEXT")
+    except Exception as e:
+        conn.rollback()
+        c = conn.cursor()
+        print(f"Error checking/migrating coupon_applied: {e}")
     
     # Sync message_count with actual conversations to update existing accounts
     try:
@@ -2539,7 +2564,7 @@ def get_chat_limit():
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        c.execute('SELECT is_paid, COALESCE(message_count, 0) FROM users WHERE id = %s', (user_id,))
+        c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
         row = c.fetchone()
         conn.close()
         
@@ -2548,7 +2573,14 @@ def get_chat_limit():
 
         is_paid = bool(row[0])
         message_count = int(row[1] or 0)
+        applied_coupon = row[2]
+        
         PAID_LIMIT = 30
+        if applied_coupon == 'KRISHNA100':
+            PAID_LIMIT = -1 # Unlimited
+        
+        remaining = (FREE_LIMIT - message_count) if not is_paid else (PAID_LIMIT - message_count if PAID_LIMIT != -1 else -1)
+        limit_reached = (not is_paid and message_count >= FREE_LIMIT) or (is_paid and PAID_LIMIT != -1 and message_count >= PAID_LIMIT)
 
         return jsonify({
             'success': True,
@@ -2556,8 +2588,9 @@ def get_chat_limit():
             'messages_used': message_count,
             'free_limit': FREE_LIMIT,
             'paid_limit': PAID_LIMIT,
-            'remaining': (FREE_LIMIT - message_count) if not is_paid else (PAID_LIMIT - message_count),
-            'limit_reached': (not is_paid and message_count >= FREE_LIMIT) or (is_paid and message_count >= PAID_LIMIT)
+            'remaining': remaining,
+            'limit_reached': limit_reached,
+            'is_unlimited': (is_paid and PAID_LIMIT == -1)
         })
     except Exception as e:
         print(f"[ERROR] get_chat_limit: {e}")
@@ -2666,15 +2699,23 @@ def verify_payment():
         conn = get_db_connection()
         c = conn.cursor()
         
-        # 1. Update order status
+        # 1. Update order status and get coupon if any
+        c.execute('SELECT coupon_applied FROM subscriptions WHERE razorpay_order_id = %s', (razorpay_order_id,))
+        sub_row = c.fetchone()
+        coupon_code = sub_row[0] if sub_row else None
+
         c.execute('''
             UPDATE subscriptions 
             SET status = 'paid', razorpay_payment_id = %s, updated_at = CURRENT_TIMESTAMP
             WHERE razorpay_order_id = %s
         ''', (razorpay_payment_id, razorpay_order_id))
         
-        # 2. Grant chat access to user (Initial access) and reset message count
-        c.execute('UPDATE users SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0 WHERE id = %s', (user_id,))
+        # 2. Grant chat access to user (Initial access) and reset message count, store coupon
+        c.execute('''
+            UPDATE users 
+            SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s 
+            WHERE id = %s
+        ''', (coupon_code, user_id))
         
         conn.commit()
         conn.close()
@@ -2936,8 +2977,12 @@ def grant_free_access():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ''', (user_id, f"FREE_{int(time.time())}", f"FREE_PYMNT_{int(time.time())}", plan_id, 0, 'JPY', receipt_id, 'completed'))
         
-        # 2. Grant access and reset message count
-        c.execute('UPDATE users SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0 WHERE id = %s', (user_id,))
+        # 2. Grant access and reset message count, store coupon
+        c.execute('''
+            UPDATE users 
+            SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s 
+            WHERE id = %s
+        ''', (coupon_code, user_id))
         
         conn.commit()
         conn.close()
