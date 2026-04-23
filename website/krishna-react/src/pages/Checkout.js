@@ -379,14 +379,13 @@ function Checkout() {
                             {!appliedCoupon && recommendedCoupons.length > 0 && (
                                 <div className="recommended-coupons">
                                     <p className="recommended-title">Рекомендуемые купоны:</p>
-                                    <div className="coupon-chips">
+                                    <div className="coupon-cards">
                                         {recommendedCoupons.map((coupon) => (
                                             <button
                                                 key={coupon.code}
-                                                className="coupon-chip"
+                                                className="coupon-card"
                                                 onClick={() => {
                                                     setCouponCode(coupon.code);
-                                                    // Trigger apply logic manually since state update is async
                                                     const autoApply = async () => {
                                                         setIsLoading(true);
                                                         setCouponError('');
@@ -418,8 +417,15 @@ function Checkout() {
                                                 }}
                                                 disabled={isLoading}
                                             >
-                                                <Ticket size={14} />
-                                                <span>{coupon.code}</span>
+                                                <Ticket size={24} className="coupon-card-icon" />
+                                                <div className="coupon-card-info">
+                                                    <span className="coupon-card-code">{coupon.code}</span>
+                                                    <span className="coupon-card-discount">
+                                                        {coupon.discount_type === 'percentage' ? `${coupon.discount_value}% OFF` : 
+                                                         coupon.discount_type === 'fixed_value' ? `${coupon.discount_value} ₽ OFF` : 
+                                                         'FREE ACCESS'}
+                                                    </span>
+                                                </div>
                                             </button>
                                         ))}
                                     </div>
