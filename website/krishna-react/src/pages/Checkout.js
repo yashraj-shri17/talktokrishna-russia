@@ -417,7 +417,7 @@ function Checkout() {
                                                 }}
                                                 disabled={isLoading}
                                             >
-                                                <Ticket size={24} className="coupon-card-icon" />
+                                                <Ticket size={18} className="coupon-card-icon" />
                                                 <div className="coupon-card-info">
                                                     <span className="coupon-card-code">{coupon.code}</span>
                                                     <span className="coupon-card-discount">
