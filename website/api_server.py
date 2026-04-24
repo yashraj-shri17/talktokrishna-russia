@@ -1228,6 +1228,83 @@ def send_admin_notification_email(user_name, user_email, user_mobile):
         print(f"❌ Admin notification error: {e}")
         return False
 
+def send_admin_purchase_notification(user_name, user_email, plan_name, amount, currency, coupon_code):
+    """Send an admin notification when a user subscribes."""
+    if not RESEND_API_KEY: return False
+    
+    # Mapping plan_id/plan_name to Russian titles
+    is_yearly = 'yearly' in plan_name.lower() or 'premium' in plan_name.lower()
+    plan_title = "Премиум план" if is_yearly else "Месячный план"
+    
+    # Convert amount to human readable format
+    # Razorpay uses smallest currency unit (e.g. 99900 for 999.00 RUB)
+    display_amount = float(amount) / 100.0 if amount > 0 else 0.0
+        
+    content_html = f"""
+        <h2 style="color: #1E3A8A; font-size: 22px; margin: 0 0 20px 0;">Новая подписка оформлена</h2>
+        <p style="margin: 0 0 16px 0;">Пользователь <strong>{user_name}</strong> только что оформил подписку.</p>
+        
+        <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #E2E8F0; margin-bottom: 24px;">
+            <table style="width:100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B; width: 35%;"><strong>Имя</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{user_name}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>Email</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{user_email}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>План</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{plan_title} ({plan_name})</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>Сумма</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{display_amount} {currency}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>Купон</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{coupon_code if coupon_code else 'Нет'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>Дата</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{datetime.now().strftime('%Y-%m-%d %H:%M')}</td>
+                </tr>
+            </table>
+        </div>
+        <p style="color: #94A3B8; font-size: 13px;">Это автоматическое системное уведомление от «Поговорите с Кришной».</p>
+    """
+    
+    # Wrap in the main template
+    html_body = _get_email_template("Уведомление о подписке", content_html)
+    
+    # Prepare attachments (banner)
+    banner_path = os.path.join(os.path.dirname(__file__), 'static', 'email', 'banner.jpg')
+    attachments = []
+    if os.path.exists(banner_path):
+        import base64
+        with open(banner_path, "rb") as f:
+            banner_b64 = base64.b64encode(f.read()).decode()
+            attachments.append({
+                "filename": "banner.jpg",
+                "content": banner_b64,
+                "content_id": "banner"
+            })
+            
+    try:
+        result = resend.Emails.send({
+            "from": "Talk to Krishna <hello@talktokrishna.ai>",
+            "to": ["hello@talktokrishna.ai"],
+            "subject": f"Новая подписка: {user_name} ({display_amount} {currency})",
+            "html": html_body,
+            "attachments": attachments
+        })
+        print(f"✅ Admin purchase notification sent. Result: {result}")
+        return True
+    except Exception as e:
+        print(f"❌ Admin purchase notification error: {e}")
+        return False
+
 def send_password_reset_email(to_email, name, reset_url):
     """Sends a password reset link in Russian."""
     if not RESEND_API_KEY: return False
@@ -2816,20 +2893,27 @@ def verify_payment():
         ''', (coupon_code, user_id))
         user_row = c.fetchone()
         
-        # Get plan_id for email content
-        c.execute('SELECT plan_id FROM subscriptions WHERE razorpay_order_id = %s', (razorpay_order_id,))
-        plan_row = c.fetchone()
-        plan_name = plan_row[0] if plan_row else "Monthly Plan"
+        # Get subscription details for email content
+        c.execute('SELECT plan_id, amount, currency, coupon_applied FROM subscriptions WHERE razorpay_order_id = %s', (razorpay_order_id,))
+        sub_info = c.fetchone()
+        plan_name, amount, currency, coupon = sub_info if sub_info else ("Monthly Plan", 0, "RUB", None)
         
         conn.commit()
         conn.close()
 
         if user_row:
             u_email, u_name = user_row
-            # 3. Send purchase confirmation email
+            # 3. Send purchase confirmation email to user
             threading.Thread(
                 target=send_purchase_confirmation_email,
                 args=(u_email, u_name, plan_name),
+                daemon=True
+            ).start()
+            
+            # 4. Send notification to admin
+            threading.Thread(
+                target=send_admin_purchase_notification,
+                args=(u_name, u_email, plan_name, float(amount), currency, coupon),
                 daemon=True
             ).start()
 
@@ -3104,10 +3188,17 @@ def grant_free_access():
 
         if user_row:
             u_email, u_name = user_row
-            # 3. Send purchase confirmation email (Free Access)
+            # 3. Send purchase confirmation email to user (Free Access)
             threading.Thread(
                 target=send_purchase_confirmation_email,
                 args=(u_email, u_name, plan_id),
+                daemon=True
+            ).start()
+            
+            # 4. Send notification to admin
+            threading.Thread(
+                target=send_admin_purchase_notification,
+                args=(u_name, u_email, plan_id, 0.0, 'RUB', coupon_code),
                 daemon=True
             ).start()
 
