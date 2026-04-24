@@ -456,11 +456,13 @@ function VoiceChat() {
 
         // ---- REAL-TIME UI UPDATE START ----
         // Pre-emptively update usage count on UI for immediate feedback
-        if (user?.id && !chatLimitInfo.is_paid) {
+        // Pre-emptively update usage count on UI for immediate feedback
+        // Now handles both free and paid (non-unlimited) users
+        if (user?.id && !chatLimitInfo.is_unlimited) {
             setChatLimitInfo(prev => ({
                 ...prev,
                 messages_used: prev.messages_used + 1,
-                remaining: Math.max(0, prev.remaining - 1)
+                remaining: prev.remaining !== -1 ? Math.max(0, prev.remaining - 1) : -1
             }));
         }
         // -------------------------------------
@@ -892,8 +894,8 @@ function VoiceChat() {
                     <div className={`chat-limit-badge ${chatLimitInfo.remaining <= (chatLimitInfo.is_paid ? 5 : 1) ? 'critical' : ''} ${chatLimitInfo.is_paid ? 'paid-badge' : ''}`}>
                         <div className="limit-icon">{chatLimitInfo.is_paid ? '⭐' : '✨'}</div>
                         <div className="limit-text">
-                            {chatLimitInfo.is_paid ? (
-                                <>Лимит: <span>{chatLimitInfo.messages_used}/{chatLimitInfo.paid_limit || 30}</span></>
+                            {selectedLanguage === 'english' ? (
+                                <>Remaining: <span>{chatLimitInfo.remaining}</span></>
                             ) : (
                                 <>Осталось: <span>{chatLimitInfo.remaining}</span></>
                             )}
