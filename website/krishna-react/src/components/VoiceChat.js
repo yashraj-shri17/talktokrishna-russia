@@ -35,7 +35,8 @@ function VoiceChat() {
         messages_used: 0,
         free_limit: 5,
         remaining: 5,
-        limit_reached: false
+        limit_reached: false,
+        is_unlimited: false
     });
 
     // Parse query params for active state
@@ -887,7 +888,7 @@ function VoiceChat() {
                 </button>
 
                 {/* Chat Limit Badge */}
-                {user && (
+                {user && !chatLimitInfo.is_unlimited && (
                     <div className={`chat-limit-badge ${chatLimitInfo.remaining <= (chatLimitInfo.is_paid ? 5 : 1) ? 'critical' : ''} ${chatLimitInfo.is_paid ? 'paid-badge' : ''}`}>
                         <div className="limit-icon">{chatLimitInfo.is_paid ? '⭐' : '✨'}</div>
                         <div className="limit-text">
