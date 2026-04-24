@@ -1317,6 +1317,101 @@ def send_password_reset_success_email(to_email, name, new_password=""):
     except Exception:
         return False
 
+def send_purchase_confirmation_email(to_email, name, plan_name):
+    """Sends a confirmation email after a successful plan purchase in Russian."""
+    if not RESEND_API_KEY:
+        print("[Email] Skipping purchase confirmation email: RESEND_API_KEY not set")
+        return False
+
+    # Determine plan details based on plan_name
+    # Mapping plan_id/plan_name to Russian titles
+    is_yearly = 'yearly' in plan_name.lower() or 'premium' in plan_name.lower()
+    plan_title = "Премиум план" if is_yearly else "Месячный план"
+    
+    features_html = ""
+    if is_yearly:
+        features_html = """
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🌟 30 божественных чатов ежемесячно (12 мес.)</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🦚 Все функции месячного плана</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🎙️ Приоритетная генерация голоса</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">📜 Сохранение истории разговоров</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🛡️ Приоритетная поддержка</td></tr>
+        """
+    else:
+        features_html = """
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">✨ 30 божественных чатов в месяц</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">📜 Сохранение истории разговоров</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">📖 Доступ ко всем 700+ шлокам</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🧘 Персональное руководство</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🕒 Доступно 24/7</td></tr>
+        """
+
+    content_html = f"""
+        <h1 style="color: #1E3A8A; font-size: 24px; margin: 0 0 16px 0;">Покупка подтверждена!</h1>
+        <p style="margin: 0 0 14px 0;">
+          Джай Шри Кришна! Ваша покупка плана <strong>{plan_title}</strong> прошла успешно.
+        </p>
+        
+        <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #E2E8F0; margin-bottom: 24px;">
+            <p style="margin: 0 0 10px 0; font-weight: bold; color: #1E3A8A;">Сводка плана:</p>
+            <p style="margin: 0 0 5px 0;"><strong>План:</strong> {plan_title}</p>
+            <p style="margin: 0;"><strong>Статус:</strong> Активен</p>
+        </div>
+
+        <table border="0" cellpadding="0" cellspacing="0" width="100%"
+          style="background-color: #F8FAFC; border-radius: 14px; padding: 22px; margin-bottom: 24px;">
+          <tr>
+            <td style="color: #1E3A8A; font-size: 15px; font-weight: bold; padding-bottom: 14px; text-align: center;">
+              Что включено в ваш план:
+            </td>
+          </tr>
+          <tr>
+            <td align="center">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                {features_html}
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin: 0 0 24px 0;">
+          Ваше божественное путешествие продолжается с расширенным руководством. Кришна готов выслушать и направить вас через мудрость Бхагавад-гиты.
+        </p>
+
+        <div align="center" style="margin-bottom: 32px;">
+            <a href="https://talktokrishna.ai/chat" 
+               style="background-color: #D4AF37; color: #ffffff; padding: 14px 32px; 
+                      border-radius: 50px; text-decoration: none; font-weight: bold; 
+                      display: inline-block; font-size: 15px;">
+               Начать общение прямо сейчас
+            </a>
+        </div>
+    """
+
+    html_body = _get_email_template(name, content_html)
+
+    banner_img_path = os.path.join(os.path.dirname(__file__), 'static', 'email', 'banner.jpg')
+    attachments = []
+    if os.path.exists(banner_img_path):
+        import base64
+        with open(banner_img_path, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+            attachments.append({"filename": "banner.jpg", "content": content, "content_id": "banner"})
+
+    try:
+        result = resend.Emails.send({
+            "from": "Поговорите с Кришной <hello@talktokrishna.ai>",
+            "to": [to_email],
+            "subject": f"Подтверждение покупки плана {plan_title} — Talk to Krishna",
+            "html": html_body,
+            "attachments": attachments
+        })
+        print(f"[Email] Purchase confirmation email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"[Email] ERROR sending purchase confirmation email: {e}")
+        return False
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
@@ -2717,10 +2812,26 @@ def verify_payment():
             UPDATE users 
             SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s 
             WHERE id = %s
+            RETURNING email, name
         ''', (coupon_code, user_id))
+        user_row = c.fetchone()
+        
+        # Get plan_id for email content
+        c.execute('SELECT plan_id FROM subscriptions WHERE razorpay_order_id = %s', (razorpay_order_id,))
+        plan_row = c.fetchone()
+        plan_name = plan_row[0] if plan_row else "Monthly Plan"
         
         conn.commit()
         conn.close()
+
+        if user_row:
+            u_email, u_name = user_row
+            # 3. Send purchase confirmation email
+            threading.Thread(
+                target=send_purchase_confirmation_email,
+                args=(u_email, u_name, plan_name),
+                daemon=True
+            ).start()
 
         print(f"✅ Order Verified: {razorpay_payment_id} for User {user_id}")
         
@@ -2984,10 +3095,21 @@ def grant_free_access():
             UPDATE users 
             SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s 
             WHERE id = %s
+            RETURNING email, name
         ''', (coupon_code, user_id))
+        user_row = c.fetchone()
         
         conn.commit()
         conn.close()
+
+        if user_row:
+            u_email, u_name = user_row
+            # 3. Send purchase confirmation email (Free Access)
+            threading.Thread(
+                target=send_purchase_confirmation_email,
+                args=(u_email, u_name, plan_id),
+                daemon=True
+            ).start()
 
         print(f"✅ Free Access Granted via Coupon {coupon_code} for User {user_id}")
         return jsonify({'success': True, 'message': '100% Discount applied. Access granted.'}), 200
