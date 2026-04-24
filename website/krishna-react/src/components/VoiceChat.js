@@ -555,7 +555,7 @@ function VoiceChat() {
             setIsLoading(false);
             setTranscript('');
         }
-    }, [speakText, user, sessionId, selectedLanguage, chatLimitInfo.is_paid]);
+    }, [speakText, user, sessionId, selectedLanguage, chatLimitInfo.is_unlimited]);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Start Journey Handler — Optimized with Multi-Part Audio (MPA) + Caching
