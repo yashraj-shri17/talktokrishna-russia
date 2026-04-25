@@ -1069,7 +1069,7 @@ function VoiceChat() {
                         {!chatLimitInfo.is_paid && (
                             <div className="promo-nudge">
                                 <span className="nudge-icon">🎁</span>
-                                <p>Примените <strong>KRISHNA499</strong>, чтобы получить Базовый план за <strong>499 ₽</strong></p>
+                                <p>Примените <strong>KRISHNA1999</strong>, чтобы получить Базовый план за <strong>1999 ₽</strong></p>
                             </div>
                         )}
                         <button
