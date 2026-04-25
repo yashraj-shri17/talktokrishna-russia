@@ -60,6 +60,9 @@
     font-size: 1.5rem;
     font-weight: 800;
     color: var(--primary);
+    white-space: nowrap;
+    margin-left: 1rem;
+    flex-shrink: 0;
 }
 
 .divider {
@@ -73,7 +76,7 @@
 .price-details {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1rem;
 }
 
 .price-row {
@@ -98,6 +101,8 @@
 .final-total {
     color: var(--primary);
     font-size: 2rem !important;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .subscription-info-badge {
@@ -120,7 +125,14 @@
 .coupon-section h3 {
     font-size: 1rem;
     font-weight: 700;
+}
+
+.coupon-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
     margin-bottom: 1.5rem;
+    color: var(--primary);
 }
 
 .coupon-input-group {
@@ -130,13 +142,21 @@
 
 .coupon-input {
     flex: 1;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     padding: 0.875rem 1.25rem;
     color: white;
     font-weight: 600;
     text-transform: uppercase;
+    transition: all 0.3s;
+}
+
+.coupon-input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(79, 70, 229, 0.5);
+    box-shadow: 0 0 15px rgba(79, 70, 229, 0.15);
 }
 
 .apply-btn {
@@ -153,6 +173,12 @@
 .apply-btn:hover:not(:disabled) {
     background: rgba(79, 70, 229, 0.2);
     transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(79, 70, 229, 0.2);
+}
+
+.apply-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .applied-badge {
@@ -165,6 +191,82 @@
     border-radius: 12px;
     color: #10b981;
     font-weight: 700;
+    animation: slideInUp 0.3s ease-out;
+}
+
+@keyframes slideInUp {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.recommended-coupons {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.recommended-title {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.coupon-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.coupon-card {
+    background: rgba(30, 41, 59, 0.4);
+    border: 1.5px dashed rgba(129, 140, 248, 0.3);
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: auto;
+    min-width: 160px;
+    text-align: left;
+}
+
+.coupon-card:hover:not(:disabled) {
+    background: rgba(30, 41, 59, 0.6);
+    border-color: #818cf8;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.coupon-card-icon {
+    color: #818cf8;
+    opacity: 0.7;
+}
+
+.coupon-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.coupon-card-code {
+    font-size: 1.125rem;
+    font-weight: 800;
+    color: #818cf8;
+    letter-spacing: 0.5px;
+}
+
+.coupon-card-discount {
+    font-size: 0.813rem;
+    font-weight: 700;
+    color: #10b981;
+    text-transform: uppercase;
 }
 
 .remove-btn {
@@ -290,23 +392,40 @@
 
 @media (max-width: 768px) {
     .checkout-container {
-        padding-top: 12vh;
+        padding-top: 10vh;
+        padding-bottom: 2rem;
     }
 
     .checkout-actions {
         grid-template-columns: 1fr;
     }
 
+    .plan-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .plan-price-side {
+        margin-left: 0;
+        font-size: 1.25rem;
+    }
+
     .final-total {
-        font-size: 1.5rem !important;
+        font-size: 1.35rem !important;
     }
 
     .checkout-card {
-        padding: 1.5rem;
+        padding: 1.25rem;
     }
 
     .success-content {
-        padding: 3rem 1.5rem;
+        padding: 3rem 1.25rem;
+    }
+
+    .section-title {
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
     }
 }
 

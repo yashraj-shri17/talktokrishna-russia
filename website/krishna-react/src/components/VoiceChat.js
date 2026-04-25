@@ -35,13 +35,14 @@ function VoiceChat() {
         messages_used: 0,
         free_limit: 5,
         remaining: 5,
-        limit_reached: false
+        limit_reached: false,
+        is_unlimited: false
     });
-    
+
     // Parse query params for active state
     const searchParams = new URLSearchParams(location.search);
     const isActiveParam = searchParams.get('active') === 'true';
-    
+
     // Use the URL param to drive the modal state
     const [showLanguageModal, setShowLanguageModal] = useState(!isActiveParam);
     const [selectedLanguage, setSelectedLanguage] = useState(null);
@@ -270,7 +271,7 @@ function VoiceChat() {
         fetchChatLimit();
     }, [user?.id, fetchChatLimit]);
 
-    const speakText = useCallback(async (text, messageId = null, audioUrl = null, onEnd = null, chainNext = false) => {
+    const speakText = useCallback(async (text, messageId = null, audioUrl = null, onEnd = null, chainNext = false, languageOverride = null) => {
         // Use refs to read live values — avoids stale closure bug that stops audio after 1 sec
         if (isSpeakingRef.current && activeMessageIdRef.current === messageId && messageId !== null && !audioUrl) {
             stopAudio();
@@ -321,10 +322,11 @@ function VoiceChat() {
             audio.setAttribute('webkit-playsinline', 'true');
 
             let src;
+            const languageProp = languageOverride || selectedLanguage || 'russian';
+
             if (fullUrl) {
                 src = fullUrl; // Use pre-resolved URL (blob or server path)
             } else {
-                const languageProp = selectedLanguage || 'russian';
                 const response = await axios.post(API_ENDPOINTS.SPEAK, { text, language: languageProp }, { responseType: 'blob', timeout: 60000 });
                 src = URL.createObjectURL(response.data);
             }
@@ -336,54 +338,64 @@ function VoiceChat() {
                 activeMessageIdRef.current = null;
                 setIsSpeaking(false);
                 setActiveMessageId(null);
-                // NOTE: Do NOT call onEnd() here — a cancellation should not chain
-                // Part2 of a multi-part greeting. onEnd is only for natural completion.
                 return;
             }
 
             audio.src = src;
             audio.load();
 
+            // Set up the end handler first
             audio.onended = () => {
                 isSpeakingRef.current = false;
                 activeMessageIdRef.current = null;
-                if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+                if (src && src.startsWith('blob:')) URL.revokeObjectURL(src);
 
                 if (chainNext && onEnd && typeof onEnd === 'function') {
-                    // MPA Part1→Part2 chain: keep React isSpeaking=true so the orb
-                    // doesn't flicker off between parts. The chained speakText takes over.
                     onEnd();
                 } else {
-                    // True end of speech (Part2 final, or single-pass) — reset orb now.
                     setIsSpeaking(false);
                     setActiveMessageId(null);
-
-                    // Resume music after Krishna finishes speaking
-                    if (musicIsActive) {
-                        fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
-                    }
-
+                    if (musicIsActive) fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
                     if (onEnd && typeof onEnd === 'function') onEnd();
                 }
             };
 
-
-            await audio.play();
-            console.log("✅ Audio playing (iOS safe)");
+            // Enhanced Play Logic with immediate fallback on failure
+            try {
+                await audio.play();
+                console.log("✅ Audio playing");
+            } catch (playErr) {
+                // If the initial play failed (common for /api/audio timeouts on Render),
+                // we trigger the manual fallback to /api/speak.
+                if (playErr.name === 'NotSupportedError' || playErr.name === 'NotAllowedError' || !fullUrl) {
+                    throw playErr; // Rethrow actual fatal errors
+                }
+                
+                console.warn('⚠️ Primary audio failed, attempting fallback...', playErr.message);
+                const fallbackResp = await axios.post(API_ENDPOINTS.SPEAK, { text, language: languageProp }, { responseType: 'blob', timeout: 60000 });
+                const fallbackSrc = URL.createObjectURL(fallbackResp.data);
+                
+                audio.src = fallbackSrc;
+                audio.load();
+                audio.onended = () => {
+                    isSpeakingRef.current = false;
+                    activeMessageIdRef.current = null;
+                    URL.revokeObjectURL(fallbackSrc);
+                    setIsSpeaking(false);
+                    setActiveMessageId(null);
+                    if (musicIsActive) fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
+                    if (onEnd && typeof onEnd === 'function') onEnd();
+                };
+                await audio.play();
+                console.log('✅ Fallback playback started.');
+            }
 
         } catch (err) {
-            console.error("❌ Playback failed:", err);
+            console.error("❌ Speech failed:", err);
             isSpeakingRef.current = false;
             activeMessageIdRef.current = null;
             setIsSpeaking(false);
             setActiveMessageId(null);
-            
-            // Resume music on error
-            if (musicIsActive) {
-                fadeDivineMusic(NORMAL_MUSIC_VOLUME, 1000);
-            }
-
-            // Still trigger callback on error so UI doesn't hang
             if (onEnd && typeof onEnd === 'function') {
                 onEnd();
             }
@@ -441,14 +453,16 @@ function VoiceChat() {
             timestamp: new Date()
         };
         setMessages(prev => [...prev, userMessage]);
-        
+
         // ---- REAL-TIME UI UPDATE START ----
         // Pre-emptively update usage count on UI for immediate feedback
-        if (user?.id && !chatLimitInfo.is_paid) {
+        // Pre-emptively update usage count on UI for immediate feedback
+        // Now handles both free and paid (non-unlimited) users
+        if (user?.id && !chatLimitInfo.is_unlimited) {
             setChatLimitInfo(prev => ({
                 ...prev,
                 messages_used: prev.messages_used + 1,
-                remaining: Math.max(0, prev.remaining - 1)
+                remaining: prev.remaining !== -1 ? Math.max(0, prev.remaining - 1) : -1
             }));
         }
         // -------------------------------------
@@ -514,7 +528,7 @@ function VoiceChat() {
 
         } catch (error) {
             console.error('Error:', error);
-            
+
             // Check for limit reached error
             if (error.response?.status === 403 && error.response?.data?.limit_reached) {
                 setChatLimitInfo(prev => ({
@@ -541,7 +555,7 @@ function VoiceChat() {
             setIsLoading(false);
             setTranscript('');
         }
-    }, [speakText, user, sessionId, selectedLanguage, chatLimitInfo.is_paid]);
+    }, [speakText, user, sessionId, selectedLanguage, chatLimitInfo.is_unlimited]);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Start Journey Handler — Optimized with Multi-Part Audio (MPA) + Caching
@@ -639,27 +653,23 @@ function VoiceChat() {
             );
 
             // STEP 2: Request + play Part1 now (short text → fast TTS, ~300-400ms)
-            // chainNext=true tells speakText NOT to reset isSpeaking when Part1 ends,
-            // so the orb stays active during the handoff to Part2.
+            // chainNext=true tells speakText NOT to reset isSpeaking when Part1 ends.
+            // We force 'english' (Aarav voice) for Namaste to match the spiritual brand.
             speakText(part1Text, msgId, null, async () => {
                 console.log("⚡ [MPA] Part1 done — awaiting pre-fetched Part2...");
                 try {
-                    // Part2 was pre-fetching while Part1 played. Await the result.
                     const response = await part2Promise;
                     const blobSrc = URL.createObjectURL(response.data);
-                    // Play Part2 immediately using its blob URL (no extra network call needed)
-                    // Re-using persistentAudioRef maintains Safari's user-gesture context
-                    // chainNext=false: Part2 is the final segment — orb stops when it ends ✅
                     speakText(part2Text, `${msgId}_p2`, blobSrc, () => {
                         startDivineMusic();
-                    }, false);
+                    }, false); // No languageOverride needed here, defaults to selectedLanguage (Russian)
                 } catch (err) {
                     console.warn("⚡ [MPA] Part2 pre-fetch failed, falling back to dynamic fetch:", err);
                     speakText(part2Text, `${msgId}_p2`, null, () => {
                         startDivineMusic();
                     }, false);
                 }
-            }, true); // chainNext=true: keeps orb alive during Part1→Part2 handoff
+            }, true, 'english'); // Force English voice for "Namaste"
 
         } else {
             // ── SAFE FALLBACK: Original single-pass blocking logic ──────────
@@ -785,12 +795,12 @@ function VoiceChat() {
                     if (audioChunksRef.current.length > 0) {
                         // Keep using webm for the blob to not confuse backed
                         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
-                        
+
                         // Resume music after recording stops (it will duck again if Krishna speaks)
                         if (ENABLE_DIVINE_MUSIC && !divineStoppedForSessionRef.current) {
                             fadeDivineMusic(NORMAL_MUSIC_VOLUME, 800);
                         }
-                        
+
                         await handleAudioUpload(audioBlob);
                     }
                 };
@@ -880,11 +890,15 @@ function VoiceChat() {
                 </button>
 
                 {/* Chat Limit Badge */}
-                {!chatLimitInfo.is_paid && user && (
-                    <div className={`chat-limit-badge ${chatLimitInfo.remaining <= 1 ? 'critical' : ''}`}>
-                        <div className="limit-icon">✨</div>
+                {user && !chatLimitInfo.is_unlimited && (
+                    <div className={`chat-limit-badge ${chatLimitInfo.remaining <= (chatLimitInfo.is_paid ? 5 : 1) ? 'critical' : ''} ${chatLimitInfo.is_paid ? 'paid-badge' : ''}`}>
+                        <div className="limit-icon">{chatLimitInfo.is_paid ? '⭐' : '✨'}</div>
                         <div className="limit-text">
-                            Осталось: <span>{chatLimitInfo.remaining}</span>
+                            {selectedLanguage === 'english' ? (
+                                <>Remaining: <span>{chatLimitInfo.remaining}</span></>
+                            ) : (
+                                <>Осталось: <span>{chatLimitInfo.remaining}</span></>
+                            )}
                         </div>
                     </div>
                 )}
@@ -894,8 +908,8 @@ function VoiceChat() {
             {showLanguageModal && (
                 <div className="language-modal-overlay">
                     <div className="language-modal">
-                        <button 
-                            className="modal-back-button" 
+                        <button
+                            className="modal-back-button"
                             onClick={() => navigate('/')}
                             title="Вернуться на главную"
                         >
@@ -1042,39 +1056,52 @@ function VoiceChat() {
                 playsInline
             />
 
-            {/* Chat Limit Reached Overlay */}
-            {chatLimitInfo.limit_reached && !chatLimitInfo.is_paid && (
+            {chatLimitInfo.limit_reached && (
                 <div className="limit-overlay">
                     <div className="limit-modal">
-                        <div className="limit-modal-icon">🔒</div>
-                        <h3>Лимит исчерпан</h3>
-                        <p>Вы достигли бесплатного лимита. Пожалуйста, обновите тариф, чтобы продолжить диалог.</p>
-                        <button 
+                        <div className="limit-modal-icon">{chatLimitInfo.is_paid ? '⏳' : '🔒'}</div>
+                        <h3>{chatLimitInfo.is_paid ? 'Лимит сообщений исчерпан' : 'Лимит исчерпан'}</h3>
+                        <p>
+                            {chatLimitInfo.is_paid 
+                                ? 'Вы использовали все 30 сообщений вашего текущего плана. Продлите подписку, чтобы продолжить общение.' 
+                                : 'Вы достигли бесплатного лимита. Пожалуйста, обновите тариф, чтобы продолжить диалог.'}
+                        </p>
+                        {!chatLimitInfo.is_paid && (
+                            <div className="promo-nudge">
+                                <span className="nudge-icon">🎁</span>
+                                <p>Примените <strong>KRISHNA1999</strong>, чтобы получить Базовый план за <strong>1999 ₽</strong></p>
+                            </div>
+                        )}
+                        <button
                             className="upgrade-btn-primary"
                             onClick={() => {
-                                const basicPlan = {
-                                    name: 'Базовый',
-                                    price: '8 990 ₽',
-                                    period: '',
-                                    description: 'Идеально для первого опыта духовных бесед',
-                                    features: [
-                                        '30 чатов',
-                                        'Все функции ИИ-чата',
-                                        'Высокое качество голоса',
-                                        'Доступ 24/7',
-                                        'История бесед'
-                                    ],
-                                    buttonText: 'Начать сейчас',
-                                    isPopular: false,
-                                    color: 'var(--blue-glow)',
-                                    plan_id: 'basic_30'
-                                };
-                                navigate('/checkout', { state: { plan: basicPlan } });
+                                if (chatLimitInfo.is_paid) {
+                                    navigate('/pricing');
+                                } else {
+                                    const basicPlan = {
+                                        name: 'Базовый',
+                                        price: '8 990 ₽',
+                                        period: '',
+                                        description: 'Идеально для первого опыта духовных бесед',
+                                        features: [
+                                            '30 чатов',
+                                            'Все функции ИИ-чата',
+                                            'Высокое качество голоса',
+                                            'Доступ 24/7',
+                                            'История бесед'
+                                        ],
+                                        buttonText: 'Начать сейчас',
+                                        isPopular: false,
+                                        color: 'var(--blue-glow)',
+                                        plan_id: 'basic_30'
+                                    };
+                                    navigate('/checkout', { state: { plan: basicPlan } });
+                                }
                             }}
                         >
-                            Обновить сейчас
+                            {chatLimitInfo.is_paid ? 'Продлить подписку' : 'Обновить сейчас'}
                         </button>
-                        <button 
+                        <button
                             className="limit-close-btn"
                             onClick={() => navigate('/')}
                         >

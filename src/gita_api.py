@@ -1308,14 +1308,14 @@ Task:
                     'samosa', 'cake', 'bread', 'roti', 'dal', 'sabji', 'breakfast', 'lunch', 'dinner',
                     'ice cream', 'chocolate', 'dessert', 'soup', 'salad', 'baking', 'oven',
                     'रेसिपी', 'बनाए', 'खाना', 'रसोई', 'चाय', 'कॉफी', 'पिज़्ज़ा', 'बर्गर', 'पास्ता',
-                    'बिरयानी', 'पनीर', 'चिकन', 'मटन', 'अंडा', 'समोसा', 'केक', 'रोटी', 'सब्जी', 'मिठाई'],
+                    'बिरयानी', 'पनीर', 'चिकन', 'मटन', 'अंडा', 'समोसा', 'केक', 'रोटी', 'सब्जी', 'मिठाई', 'cauliflower', 'vegetable'],
             
             # Weather, Travel & Geography (factual)
             'geography': ['weather', 'temperature', 'forecast', 'rain tomorrow',
                          'climate in', 'map of', 'distance between', 'mausam', 'barish', 'dhup',
                          'garmi', 'sardi', 'thand', 'monsoon', 'humidity', 'degree celsius',
                          'bus', 'train', 'flight', 'ticket', 'booking', 'hotel room', 'visa application',
-                         'passport', 'airport', 'railway station', 'directions to', 'gps',
+                         'passport', 'airport', 'railway station', 'directions to', 'gps', 'Russia', 'travel', 'visa', 'visit',
                          'मौसम', 'बारिश', 'धूप', 'गर्मी', 'सर्दी', 'ठंड', 'तापमान', 'डिग्री',
                          'बस', 'ट्रेन', 'फ्लाइट', 'हवाई जहाज', 'टिकट', 'बुकिंग', 'होटल', 'पासपोर्ट',
                          # Unicode Matches (Guaranteed)
@@ -1378,16 +1378,14 @@ Task:
             'money', 'paisa', 'ameer', 'rich', 'garib', 'financial', 'karza', 'debt',
 
             # Existential Questions
-            'why', 'क्यों', 'how', 'कैसे', 'what is', 'क्या है', 'who am i', 'destiny',
+            'who am i', 'destiny',
             'death', 'मृत्यु', 'birth', 'जन्म', 'suffering', 'कष्ट', 'fate', 'kismat',
             'desire', 'इच्छा', 'attachment', 'मोह', 'ego', 'अहंकार', 'pride', 'ghamand',
 
             # Common Hinglish life situation words
             'kya karu', 'kya karun', 'kya karoon', 'kya karna chahiye',
             'kaise karu', 'kaise karun', 'kaise karoon', 'samajh nahi aa raha',
-            'sahi', 'galat', 'theek', 'bura', 'acha', 'achha',
-            'meri', 'mera', 'mere', 'mujhe', 'mujhko', 'main', 'hum',
-            'nahi', 'nhi', 'mat', 'ruk', 'rok', 'khatam', 'shuru'
+            'sahi', 'galat', 'theek', 'bura', 'acha', 'achha'
         ]
 
         # 1. CHECK RELEVANT KEYWORDS FIRST

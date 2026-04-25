@@ -24,7 +24,7 @@ function Pricing() {
     const plans = [
         {
             name: 'Месячный план',
-            price: '8 990 ₽',
+            price: '9 999 ₽',
             period: '/мес',
             description: 'Идеально для ежемесячных духовных бесед',
             features: [
@@ -41,7 +41,7 @@ function Pricing() {
         },
         {
             name: 'Премиум план',
-            price: '53 990 ₽',
+            price: '21 999 ₽',
             period: '/год',
             description: 'Годовой план для тех, кто ищет лучший опыт',
             features: [
@@ -61,6 +61,18 @@ function Pricing() {
     return (
         <div className="pricing-page">
             <Navbar />
+
+            {/* Floating Coupon Notification */}
+            <div className="coupon-floating-banner">
+                <div className="coupon-content">
+                    <div className="coupon-icon">🎁</div>
+                    <div className="coupon-text-wrapper">
+                        <span className="coupon-label">СПЕЦИАЛЬНОЕ ПРЕДЛОЖЕНИЕ</span>
+                        <p>Используйте <strong>KRISHNA1999</strong> для Базового плана всего за <strong>1999 ₽</strong></p>
+                    </div>
+                </div>
+                <div className="coupon-sparkles"></div>
+            </div>
 
             <div className="pricing-container container">
                 <header className="pricing-header">

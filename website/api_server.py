@@ -55,6 +55,9 @@ AUDIO_DIR = os.path.join(os.path.dirname(__file__), 'audio_cache')
 if not os.path.exists(AUDIO_DIR):
     os.makedirs(AUDIO_DIR)
 
+# In-memory audio cache for fast serving
+audio_cache = {}
+
 # ---------------------------------------------------------------------------
 # Email & Auth Configuration
 # ---------------------------------------------------------------------------
@@ -70,151 +73,240 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '617777461318-r4k9arqp5lid84ien
 # OTP storage (In-memory for login)
 otp_storage = {} # {mobile: {"otp": otp, "expires_at": timestamp, "user_id": user_id}}
 
-# In-memory audio cache for fast serving
-audio_cache = {}
+# ---------------------------------------------------------------------------
+# Azure Cognitive Services TTS helper
+# ---------------------------------------------------------------------------
+try:
+    import azure.cognitiveservices.speech as speechsdk
+    _AZURE_SDK_AVAILABLE = True
+except ImportError:
+    _AZURE_SDK_AVAILABLE = False
+    print("[TTS] azure-cognitiveservices-speech not installed — falling back to Edge TTS.")
 
-async def _generate_multi_voice_audio(text: str, buffer: io.BytesIO, language: str = 'russian'):
-    """
-    Detect language parts and generate audio using multiple voices sequentially.
-    """
+AZURE_SPEECH_KEY    = os.getenv('AZURE_SPEECH_KEY', '')
+AZURE_SPEECH_REGION = os.getenv('AZURE_SPEECH_REGION', 'centralindia')
+
+# Azure TTS voice names
+AZURE_RUSSIAN_VOICE = os.getenv("AZURE_RUSSIAN_VOICE", "ru-RU-DmitryNeural")
+AZURE_ENGLISH_VOICE = os.getenv("AZURE_ENGLISH_VOICE", "en-IN-AaravNeural")
+AZURE_HINDI_VOICE_NAME = os.getenv("AZURE_HINDI_VOICE_NAME", "hi-IN-AaravNeural")
+
+# Edge TTS Voice Mappings
+EDGE_RUSSIAN_VOICE = "ru-RU-DmitryNeural"
+EDGE_ENGLISH_VOICE = "en-IN-PrabhatNeural"
+EDGE_HINDI_VOICE = "hi-IN-MadhurNeural"
+
+
+def _azure_tts_universal(text, platform_lang='russian'):
+    if not _AZURE_SDK_AVAILABLE or not AZURE_SPEECH_KEY: return b''
+    lines = text.split('\n')
+    ssml_parts = []
+    def _get_voice(t):
+        if any('\u0900' <= c <= '\u097F' for c in t): return AZURE_HINDI_VOICE_NAME, "hi-IN"
+        if any('\u0400' <= c <= '\u04FF' for c in t): return AZURE_RUSSIAN_VOICE, "ru-RU"
+        if platform_lang == 'russian': return AZURE_RUSSIAN_VOICE, "ru-RU"
+        return AZURE_ENGLISH_VOICE, "en-IN"
+    cv, cb = None, []
+    def _get_rate(voice):
+        if voice == AZURE_HINDI_VOICE_NAME: return "-5%"   # Shloka - slow & reverent
+        if voice == AZURE_RUSSIAN_VOICE:    return "+0%"   # Russian - natural pace
+        return "+5%"                                        # English - slightly faster
+    for line in lines:
+        s = line.strip()
+        if not s: continue
+        v, l = _get_voice(s)
+        if v != cv:
+            if cb:
+                rate = _get_rate(cv)
+                ssml_parts.append(f'<voice name="{cv}"><prosody rate="{rate}">{_escape_xml(" ".join(cb))}</prosody></voice>')
+            cv, cb = v, [s]
+        else: cb.append(s)
+    if cb:
+        rate = _get_rate(cv)
+        ssml_parts.append(f'<voice name="{cv}"><prosody rate="{rate}">{_escape_xml(" ".join(cb))}</prosody></voice>')
+    if not ssml_parts: return b''
+    ssml = f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">{"".join(ssml_parts)}</speak>'
+    try:
+        sc = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
+        sc.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz128KBitRateMonoMp3)
+        synthesizer = speechsdk.SpeechSynthesizer(speech_config=sc, audio_config=None)
+        res = synthesizer.speak_ssml_async(ssml).get()
+        if res.reason == speechsdk.ResultReason.SynthesizingAudioCompleted: return res.audio_data
+    except Exception as e: print(f"❌ [Azure Universal] Exception: {e}")
+    return b''
+
+
+
+def _clean_text_for_tts(text: str) -> str:
+    """Clean answer text before TTS: removes emojis, redundant citations, and narrator markers."""
     import re
-    # Clean text but keep structure for language detection
-    clean_text = re.sub(r'<[^>]*>', '', text)
+    # Remove emojis
+    emoji_pattern = re.compile("["
+        "\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF"
+        "\U00002702-\U000027B0\U000024C2-\U0001F251\u2600-\u26FF\u2700-\u27BF\uFE00-\uFE0F\u200d"
+    "]+", flags=re.UNICODE)
+    text = emoji_pattern.sub('', text)
     
-    lines = clean_text.split('\n')
-    segments = []
+    # Remove citations at the very end
+    trailing_citation = re.compile(r'\s*(?:भगवद\s*गीता|Бхагавад-гита|Bhagavad\s*Gita)[,،\s]*(?:अध्याय|Глава|Chapter)\s*\d+[,،\s]*(?:श्लोक|Текст|Shloka)\s*\d+\s*$', re.UNICODE | re.IGNORECASE)
+    text = trailing_citation.sub('', text).strip()
+
     
-    # Select default voice based on target language
-    if language == 'russian':
-        default_voice = "ru-RU-DmitryNeural"
-    else:
-        default_voice = "en-IN-PrabhatNeural"
-        
-    current_voice = default_voice
-    current_text_lines = []
+    # Remove shloka number markers like | 1.1 | or ॥ १.१ ॥
+    text = re.sub(r'([।॥|])\s*[0-9०-९\.]+\s*[।॥|]?', r'\1', text)
     
+    # Remove common narrator markers
+    narrator_pattern = re.compile(r'(?:(?:श्री\s*)?भगवानुवाच|(?:Shri\s*)?Bhagavan\s*uvacha|(?:Shri\s*)?Krishna\s*uvacha|श्रीकृष्ण\s*उवाच|Sanjaya\s*uvacha|Arjuna\s*uvacha|Dhritarashtra\s*uvacha|सञ्जय\s*उवाच|धृतराष्ट्र\s*उवाच|अर्जुन\s*उवाच)[:\s]*', re.IGNORECASE | re.UNICODE)
+    text = narrator_pattern.sub('', text)
+    
+    # Remove Markdown formatting
+    text = re.sub(r'\*\*\*', '', text) # Bold Italic
+    text = re.sub(r'\*\*', '', text)  # Bold
+    text = re.sub(r'^\s*[\*\-]\s+', '', text, flags=re.MULTILINE) # List bullets
+    text = re.sub(r'(?<!\*)\*(?!\*)', '', text) # Single asterisks (italic)
+    text = re.sub(r'#+\s+', '', text) # Headers
+    text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE) # Numbered lists (1. 2. 3.)
+    text = re.sub(r'__+', '', text) # Bold underscores
+    
+    return text.strip()
+
+def _escape_xml(text: str) -> str:
+    """Escape special characters for SSML (XML)."""
+    if not text: return ""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&apos;")
+
+
+def _split_text_for_tts(text: str):
+    """Splits text into chunks based on language (Devanagari vs others) for optimal TTS."""
+    import re
+    lines = text.split('\n')
+    
+    chunks = []
+    current_type = None
+    current_lines = []
+
+    def _get_lang_type(t):
+        if any('\u0900' <= c <= '\u097F' for c in t): return 'sanskrit'
+        return 'latin'
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
-            if current_text_lines:
-                current_text_lines.append(line)
+            if current_lines: current_lines.append(line)
             continue
             
-        # Detect script type for each line to assign the correct TTS voice:
-        # - Devanagari (Hindi/Sanskrit) → Hindi voice
-        # - Cyrillic (Russian) → Russian voice
-        # - Pure Latin/ASCII (e.g. "Namaste Yash!") → English voice
-        has_devanagari = any('\u0900' <= char <= '\u097F' for char in stripped)
-        has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in stripped)
-
-        if has_devanagari:
-            target_voice = "hi-IN-MadhurNeural"
-        elif has_cyrillic:
-            target_voice = "ru-RU-DmitryNeural"
+        ltype = _get_lang_type(stripped)
+        if current_type is None:
+            current_type = ltype
+            current_lines.append(line)
+        elif ltype == current_type:
+            current_lines.append(line)
         else:
-            # Pure Latin/ASCII line → English voice for natural pronunciation
-            target_voice = "en-IN-PrabhatNeural"
-        
-        if target_voice != current_voice:
-            if current_text_lines:
-                segments.append((current_voice, "\n".join(current_text_lines)))
-            current_text_lines = [line]
-            current_voice = target_voice
-        else:
-            current_text_lines.append(line)
+            chunks.append((current_type, '\n'.join(current_lines).strip()))
+            current_type = ltype
+            current_lines = [line]
             
-    if current_text_lines:
-        segments.append((current_voice, "\n".join(current_text_lines)))
-        
-    # Always isolate "Bhagwat geeta Chapter X Shloka Y" (and variations) for English pronunciation
-    refined_segments = []
-    for voice, segment_text in segments:
-        if not segment_text.strip():
-            continue
-            
-        # Split text, capturing variations like "Bhagwat geeta Chapter X Shloka Y" or just "Chapter X Shloka Y"
-        parts = re.split(r'(?i)((?:Bhagwat\s*geeta[\s,]*)?Chapter\s+\d+(?:[\s,]*Shloka\s+\d+)?)', segment_text)
-        
-        for part in parts:
-            if not part.strip():
-                if part:
-                    refined_segments.append((voice, part))
-                continue
-                
-            # If this part is the English chapter/shloka reference, use English voice
-            if re.match(r'(?i)^(?:Bhagwat\s*geeta[\s,]*)?Chapter\s+\d+', part.strip()):
-                refined_segments.append(("en-IN-PrabhatNeural", part))
-            else:
-                refined_segments.append((voice, part))
+    if current_lines:
+        chunks.append((current_type, '\n'.join(current_lines).strip()))
 
-    # Parallel generation tasks
-    async def get_segment_audio(v, t):
-        if not t.strip():
-            return b""
-        r = "+10%" if ("ja-JP" in v or "ru-RU" in v) else "+0%"
-        clean_s = t[:40].replace('\n', ' ')
-        print(f"Starting TTS for [{v}]: {clean_s}...")
-        
-        seg_buffer = io.BytesIO()
-        communicate = edge_tts.Communicate(t, v, rate=r)
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                seg_buffer.write(chunk["data"])
-        return seg_buffer.getvalue()
-
-    # Launch all segments in parallel
-    tasks = [get_segment_audio(v, t) for v, t in refined_segments]
-    segment_audios = await asyncio.gather(*tasks)
+    before, header, verse, after = "", "", "", ""
+    latin_found = False
+    sanskrit_found = False
     
-    # Combine results in original order
-    for audio_data in segment_audios:
-        buffer.write(audio_data)
+    for ctype, ctext in chunks:
+        if ctype == 'latin':
+            if not latin_found:
+                before = ctext; latin_found = True
+            else:
+                after += "\n" + ctext
+        else:
+            if not sanskrit_found:
+                verse = ctext; sanskrit_found = True
+            else:
+                after += "\n" + ctext
 
+    return before.strip(), header.strip(), verse.strip(), after.strip(), False
 
 def _generate_audio_async(text: str, language: str = 'russian') -> str:
-    """
-    Generate audio asynchronously and cache it.
-    Returns audio_id immediately while generation happens in background.
-    """
+    """Generate audio asynchronously using Azure TTS and cache it."""
     audio_id = str(uuid.uuid4())
-    
     def generate():
         try:
-            import time
-            gen_start = time.time()
-            print(f"Starting TTS generation for audio_id: {audio_id}")
+            print(f"[TTS] Processing {audio_id} | Lang: {language}")
+            cleaned = _clean_text_for_tts(text)
+            cleaned = re.sub(r'<[^>]*>', '', cleaned).strip()
+            before, header, verse, after, detected_en = _split_text_for_tts(cleaned)
+            print(f"[DEBUG] TTS Split: Before={len(before)}, Header={len(header)}, Verse={len(verse)}, After={len(after)}")
+            is_eng = (language == 'english' or detected_en)
+
+            def _has_hindi(t): return any('\u0900' <= c <= '\u097F' for c in t)
             
-            # Clean text
-            import re
-            clean_text = re.sub(r'<[^>]*>', '', text).replace('\n', ' ')
-            print(f"Text length: {len(clean_text)} characters")
+            # Use Azure if SDK is available and key is present (regardless of length)
+            use_azure = _AZURE_SDK_AVAILABLE and AZURE_SPEECH_KEY
             
-            # Buffer to hold audio in memory
-            audio_buffer = io.BytesIO()
-            
-            # Run async generation with multi-voice support
-            tts_start = time.time()
-            asyncio.run(_generate_multi_voice_audio(text, audio_buffer, language))
-            tts_time = time.time() - tts_start
-            
-            # Reset buffer pointer
-            audio_buffer.seek(0)
-            
-            # Cache the audio data
-            audio_cache[audio_id] = audio_buffer.getvalue()
-            
-            total_time = time.time() - gen_start
-            audio_size = len(audio_cache[audio_id]) / 1024
-            print(f"TTS complete: {tts_time:.2f}s, Total: {total_time:.2f}s, Size: {audio_size:.1f}KB")
-            
+            # Use the new Universal Azure TTS
+            audio_bytes = b''
+            if use_azure:
+                try:
+                    print(f"[DEBUG] Attempting Universal Azure TTS for {language}...")
+                    # Combine all parts into one cleaned string for universal detection
+                    all_text = "\n".join(filter(None, [before, header, verse, after]))
+                    if not all_text.strip(): all_text = cleaned
+                    audio_bytes = _azure_tts_universal(all_text, platform_lang=language)
+                except Exception as e:
+                    print(f"[Azure TTS] Universal Error: {e}")
+
+
+
+
+            if not audio_bytes: # Fallback to Edge TTS
+                print(f"⚠️ Using Edge TTS Fallback...")
+                async def _edge_gen_all():
+                    v_main = EDGE_RUSSIAN_VOICE if language == 'russian' else (EDGE_ENGLISH_VOICE if is_eng else EDGE_HINDI_VOICE)
+                    v_slk = EDGE_HINDI_VOICE
+                    async def _gen_part(name, t, v, r):
+                        if not t.strip(): return b''
+                        current_v = EDGE_HINDI_VOICE if _has_hindi(t) and v != EDGE_HINDI_VOICE else v
+                        print(f"[DEBUG] Edge TTS Part '{name}': Voice={current_v}, Rate={r}, TextLen={len(t)}")
+                        b = io.BytesIO()
+                        try:
+                            # Clean any leftover markdown or special chars just for TTS
+                            t_clean = re.sub(r'[*#_\[\]()]', '', t)
+                            async for chunk in edge_tts.Communicate(t_clean, current_v, rate=r).stream():
+                                if chunk["type"] == "audio": b.write(chunk["data"])
+                            res = b.getvalue()
+                            if not res: print(f"⚠️ No audio received for part '{name}'")
+                            return res
+                        except Exception as e:
+                            print(f"❌ Edge TTS Part '{name}' Error: {e}")
+                            return b''
+                            
+                    tasks = []
+                    if before: tasks.append(_gen_part("Before", before, v_main, "+0%"))
+                    if header: tasks.append(_gen_part("Header", header, v_main, "+0%"))
+                    if verse:  tasks.append(_gen_part("Verse", verse, v_slk, "-10%"))
+                    if after:  tasks.append(_gen_part("After", after, v_main, "+0%"))
+                    
+                    if not tasks and cleaned:
+                        tasks.append(_gen_part("Cleaned", cleaned, v_main, "+0%"))
+                        
+                    results = await asyncio.gather(*tasks)
+                    return b''.join(results)
+
+    
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try: 
+                    audio_bytes = loop.run_until_complete(_edge_gen_all())
+                    print(f"✅ Edge TTS Generation Complete: {len(audio_bytes)//1024}KB")
+                finally: loop.close()
+
+            audio_cache[audio_id] = audio_bytes
+            print(f"[TTS] Complete: {audio_id} | Size: {len(audio_bytes)//1024}KB")
         except Exception as e:
-            print(f"Audio generation error: {e}")
-            audio_cache[audio_id] = None
-    
-    # Start generation in background thread
-    thread = threading.Thread(target=generate, daemon=True)
-    thread.start()
-    
+            print(f"[TTS] Error: {e}"); audio_cache[audio_id] = None
+
+    threading.Thread(target=generate, daemon=True).start()
     return audio_id
 
 
@@ -393,12 +485,12 @@ def ask_question():
             try:
                 conn = get_db_connection()
                 c = conn.cursor()
-                c.execute('SELECT is_paid, COALESCE(message_count, 0) FROM users WHERE id = %s', (user_id,))
+                c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
                 user_limit_row = c.fetchone()
                 conn.close()
                 
                 if user_limit_row:
-                    is_paid_status, msg_count = user_limit_row
+                    is_paid_status, msg_count, applied_coupon = user_limit_row
                     if not is_paid_status and msg_count >= FREE_LIMIT:
                         return jsonify({
                             'success': False,
@@ -406,6 +498,22 @@ def ask_question():
                             'error': 'Вы исчерпали лимит бесплатных сообщений. Пожалуйста, обновите подписку, чтобы продолжить.',
                             'messages_used': msg_count,
                             'free_limit': FREE_LIMIT
+                        }), 403
+                    
+                    # Dynamic Paid Limit based on coupon
+                    PAID_LIMIT = 30 # Default
+                    if applied_coupon == 'KRISHNA100':
+                        PAID_LIMIT = -1 # Unlimited
+                    elif applied_coupon == 'KRISHNA1999' or applied_coupon == 'POORAFREEHAI':
+                        PAID_LIMIT = 30
+                    
+                    if is_paid_status and PAID_LIMIT != -1 and msg_count >= PAID_LIMIT:
+                        return jsonify({
+                            'success': False,
+                            'limit_reached': True,
+                            'error': 'Вы исчерпали свой лимит сообщений. Пожалуйста, продлите подписку, чтобы продолжить.',
+                            'messages_used': msg_count,
+                            'paid_limit': PAID_LIMIT
                         }), 403
             except Exception as e:
                 print(f"Error checking message limit: {e}")
@@ -653,16 +761,22 @@ def ask_question():
                 # Re-select after increment to get latest value
                 conn_cl = get_db_connection()
                 c_cl = conn_cl.cursor()
-                c_cl.execute('SELECT is_paid, COALESCE(message_count, 0) FROM users WHERE id = %s', (user_id,))
+                c_cl.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
                 cl_row = c_cl.fetchone()
                 conn_cl.close()
                 if cl_row:
-                    is_p, m_c = cl_row
+                    is_p, m_c, a_c = cl_row
+                    
+                    # Calculate dynamic limit
+                    p_limit = 30
+                    if a_c == 'KRISHNA100': p_limit = -1
+                    
                     chat_limit_info = {
                         'is_paid': bool(is_p),
                         'messages_used': m_c,
-                        'remaining': max(0, 5 - m_c) if not is_p else -1,
-                        'limit_reached': (not is_p and m_c >= 5)
+                        'remaining': (max(0, 5 - m_c) if not is_p else (max(0, p_limit - m_c) if p_limit != -1 else -1)),
+                        'limit_reached': (not is_p and m_c >= 5) or (is_p and p_limit != -1 and m_c >= p_limit),
+                        'is_unlimited': (is_p and p_limit == -1)
                     }
             except Exception as e:
                 print(f"Chat limit re-fetch error: {e}")
@@ -689,9 +803,7 @@ def ask_question():
 
 @app.route('/api/speak', methods=['POST'])
 def speak_text():
-    """
-    Generate audio from text using Neural TTS in-memory (no files saved).
-    """
+    """Generate audio from text using Neural TTS in-memory (Azure or Edge TTS)."""
     try:
         data = request.get_json()
         text = data.get('text', '').strip()
@@ -700,16 +812,53 @@ def speak_text():
         if not text:
             return jsonify({'error': 'No text provided'}), 400
 
-        # Buffer to hold audio in memory
-        audio_buffer = io.BytesIO()
-        
-        # Run async generation with multi-voice support
-        asyncio.run(_generate_multi_voice_audio(text, audio_buffer, language))
+        print(f"[DEBUG] TTS Speak Request - Lang: {language} | Text: {text[:50]}...")
+        cleaned = _clean_text_for_tts(text)
+        cleaned = re.sub(r'<[^>]*>', '', cleaned).strip()
+        before, header, verse, after, detected_en = _split_text_for_tts(cleaned)
+        is_eng = (language == 'english' or detected_en)
 
-        # Reset buffer pointer to beginning
-        audio_buffer.seek(0)
+        audio_bytes = b''
+        # 1. Try Azure TTS first if available
+        if _AZURE_SDK_AVAILABLE and AZURE_SPEECH_KEY:
+            try:
+                # Combine all parts for universal detection
+                all_text = "\n".join(filter(None, [before, header, verse, after]))
+                if not all_text.strip(): all_text = cleaned
+                audio_bytes = _azure_tts_universal(all_text, platform_lang=language)
+            except Exception as e:
+                print(f"[Azure TTS] SDK/REST Error in /api/speak: {e}")
+
+        # 2. Fallback to Edge TTS if Azure failed or is unavailable
+        if not audio_bytes:
+            v_main = "ru-RU-DmitryNeural" if language == 'russian' else ("en-US-GuyNeural" if is_eng else "hi-IN-MadhurNeural")
+            v_slk = "hi-IN-MadhurNeural"
+            
+            async def _gen_part(t, v, r):
+                if not t.strip(): return b''
+                buf = io.BytesIO()
+                async for chunk in edge_tts.Communicate(t, v, rate=r).stream():
+                    if chunk["type"] == "audio": buf.write(chunk["data"])
+                return buf.getvalue()
+
+            async def _gen_all():
+                tasks = []
+                if before: tasks.append(_gen_part(before, v_main, "+5%"))
+                if header: tasks.append(_gen_part(header, v_main, "+5%"))
+                if verse:  tasks.append(_gen_part(verse, v_slk, "-5%"))
+                if after:  tasks.append(_gen_part(after, v_main, "+5%"))
+                if not tasks and cleaned: tasks.append(_gen_part(cleaned, v_main, "+5%"))
+                results = await asyncio.gather(*tasks)
+                return b''.join(results)
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try: audio_bytes = loop.run_until_complete(_gen_all())
+            finally: loop.close()
 
         # Return file from memory
+        audio_buffer = io.BytesIO(audio_bytes)
+        audio_buffer.seek(0)
         return send_file(
             audio_buffer,
             mimetype="audio/mpeg",
@@ -1079,6 +1228,83 @@ def send_admin_notification_email(user_name, user_email, user_mobile):
         print(f"❌ Admin notification error: {e}")
         return False
 
+def send_admin_purchase_notification(user_name, user_email, plan_name, amount, currency, coupon_code):
+    """Send an admin notification when a user subscribes."""
+    if not RESEND_API_KEY: return False
+    
+    # Mapping plan_id/plan_name to Russian titles
+    is_yearly = 'yearly' in plan_name.lower() or 'premium' in plan_name.lower()
+    plan_title = "Премиум план" if is_yearly else "Месячный план"
+    
+    # Convert amount to human readable format
+    # Razorpay uses smallest currency unit (e.g. 99900 for 999.00 RUB)
+    display_amount = float(amount) / 100.0 if amount > 0 else 0.0
+        
+    content_html = f"""
+        <h2 style="color: #1E3A8A; font-size: 22px; margin: 0 0 20px 0;">Новая подписка оформлена</h2>
+        <p style="margin: 0 0 16px 0;">Пользователь <strong>{user_name}</strong> только что оформил подписку.</p>
+        
+        <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #E2E8F0; margin-bottom: 24px;">
+            <table style="width:100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B; width: 35%;"><strong>Имя</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{user_name}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>Email</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{user_email}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>План</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{plan_title} ({plan_name})</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>Сумма</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{display_amount} {currency}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>Купон</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{coupon_code if coupon_code else 'Нет'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; color: #64748B;"><strong>Дата</strong></td>
+                    <td style="padding: 8px 0; color: #1E293B;">{datetime.now().strftime('%Y-%m-%d %H:%M')}</td>
+                </tr>
+            </table>
+        </div>
+        <p style="color: #94A3B8; font-size: 13px;">Это автоматическое системное уведомление от «Поговорите с Кришной».</p>
+    """
+    
+    # Wrap in the main template
+    html_body = _get_email_template("Уведомление о подписке", content_html)
+    
+    # Prepare attachments (banner)
+    banner_path = os.path.join(os.path.dirname(__file__), 'static', 'email', 'banner.jpg')
+    attachments = []
+    if os.path.exists(banner_path):
+        import base64
+        with open(banner_path, "rb") as f:
+            banner_b64 = base64.b64encode(f.read()).decode()
+            attachments.append({
+                "filename": "banner.jpg",
+                "content": banner_b64,
+                "content_id": "banner"
+            })
+            
+    try:
+        result = resend.Emails.send({
+            "from": "Talk to Krishna <hello@talktokrishna.ai>",
+            "to": ["hello@talktokrishna.ai"],
+            "subject": f"Новая подписка: {user_name} ({display_amount} {currency})",
+            "html": html_body,
+            "attachments": attachments
+        })
+        print(f"✅ Admin purchase notification sent. Result: {result}")
+        return True
+    except Exception as e:
+        print(f"❌ Admin purchase notification error: {e}")
+        return False
+
 def send_password_reset_email(to_email, name, reset_url):
     """Sends a password reset link in Russian."""
     if not RESEND_API_KEY: return False
@@ -1166,6 +1392,101 @@ def send_password_reset_success_email(to_email, name, new_password=""):
         })
         return True
     except Exception:
+        return False
+
+def send_purchase_confirmation_email(to_email, name, plan_name):
+    """Sends a confirmation email after a successful plan purchase in Russian."""
+    if not RESEND_API_KEY:
+        print("[Email] Skipping purchase confirmation email: RESEND_API_KEY not set")
+        return False
+
+    # Determine plan details based on plan_name
+    # Mapping plan_id/plan_name to Russian titles
+    is_yearly = 'yearly' in plan_name.lower() or 'premium' in plan_name.lower()
+    plan_title = "Премиум план" if is_yearly else "Месячный план"
+    
+    features_html = ""
+    if is_yearly:
+        features_html = """
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🌟 30 божественных чатов ежемесячно (12 мес.)</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🦚 Все функции месячного плана</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🎙️ Приоритетная генерация голоса</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">📜 Сохранение истории разговоров</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🛡️ Приоритетная поддержка</td></tr>
+        """
+    else:
+        features_html = """
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">✨ 30 божественных чатов в месяц</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">📜 Сохранение истории разговоров</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">📖 Доступ ко всем 700+ шлокам</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🧘 Персональное руководство</td></tr>
+            <tr><td style="padding: 4px 12px; color: #374151; font-size: 14px; text-align: center;">🕒 Доступно 24/7</td></tr>
+        """
+
+    content_html = f"""
+        <h1 style="color: #1E3A8A; font-size: 24px; margin: 0 0 16px 0;">Покупка подтверждена!</h1>
+        <p style="margin: 0 0 14px 0;">
+          Джай Шри Кришна! Ваша покупка плана <strong>{plan_title}</strong> прошла успешно.
+        </p>
+        
+        <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #E2E8F0; margin-bottom: 24px;">
+            <p style="margin: 0 0 10px 0; font-weight: bold; color: #1E3A8A;">Сводка плана:</p>
+            <p style="margin: 0 0 5px 0;"><strong>План:</strong> {plan_title}</p>
+            <p style="margin: 0;"><strong>Статус:</strong> Активен</p>
+        </div>
+
+        <table border="0" cellpadding="0" cellspacing="0" width="100%"
+          style="background-color: #F8FAFC; border-radius: 14px; padding: 22px; margin-bottom: 24px;">
+          <tr>
+            <td style="color: #1E3A8A; font-size: 15px; font-weight: bold; padding-bottom: 14px; text-align: center;">
+              Что включено в ваш план:
+            </td>
+          </tr>
+          <tr>
+            <td align="center">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                {features_html}
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin: 0 0 24px 0;">
+          Ваше божественное путешествие продолжается с расширенным руководством. Кришна готов выслушать и направить вас через мудрость Бхагавад-гиты.
+        </p>
+
+        <div align="center" style="margin-bottom: 32px;">
+            <a href="https://talktokrishna.ai/chat" 
+               style="background-color: #D4AF37; color: #ffffff; padding: 14px 32px; 
+                      border-radius: 50px; text-decoration: none; font-weight: bold; 
+                      display: inline-block; font-size: 15px;">
+               Начать общение прямо сейчас
+            </a>
+        </div>
+    """
+
+    html_body = _get_email_template(name, content_html)
+
+    banner_img_path = os.path.join(os.path.dirname(__file__), 'static', 'email', 'banner.jpg')
+    attachments = []
+    if os.path.exists(banner_img_path):
+        import base64
+        with open(banner_img_path, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+            attachments.append({"filename": "banner.jpg", "content": content, "content_id": "banner"})
+
+    try:
+        result = resend.Emails.send({
+            "from": "Поговорите с Кришной <hello@talktokrishna.ai>",
+            "to": [to_email],
+            "subject": f"Подтверждение покупки плана {plan_title} — Talk to Krishna",
+            "html": html_body,
+            "attachments": attachments
+        })
+        print(f"[Email] Purchase confirmation email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"[Email] ERROR sending purchase confirmation email: {e}")
         return False
 
 @app.route('/api/health', methods=['GET'])
@@ -1404,6 +1725,19 @@ def init_db():
         conn.rollback()
         c = conn.cursor()
         print(f"Error checking/migrating message_count: {e}")
+
+    # Migration for coupon_applied in users table
+    try:
+        c.execute("SELECT coupon_applied FROM users LIMIT 1")
+    except errors.UndefinedColumn:
+        conn.rollback()
+        c = conn.cursor()
+        print("Migrating DB: Adding coupon_applied column to users...")
+        c.execute("ALTER TABLE users ADD COLUMN coupon_applied TEXT")
+    except Exception as e:
+        conn.rollback()
+        c = conn.cursor()
+        print(f"Error checking/migrating coupon_applied: {e}")
     
     # Sync message_count with actual conversations to update existing accounts
     try:
@@ -1476,6 +1810,7 @@ def init_db():
             discount_type TEXT DEFAULT 'free_access',
             discount_value NUMERIC DEFAULT 0,
             is_active BOOLEAN DEFAULT TRUE,
+            show_in_checkout BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -1545,6 +1880,36 @@ def init_db():
         conn.rollback()
         c = conn.cursor()
         print(f"Error checking/migrating discount_value column: {e}")
+    
+    # Migration for coupons table: add show_in_checkout if it doesn't exist
+    try:
+        c.execute("SELECT show_in_checkout FROM coupons LIMIT 1")
+    except errors.UndefinedColumn:
+        conn.rollback()
+        c = conn.cursor()
+        print("Migrating DB: Adding show_in_checkout column to coupons table...")
+        c.execute('ALTER TABLE coupons ADD COLUMN show_in_checkout BOOLEAN DEFAULT TRUE')
+        conn.commit()
+        c = conn.cursor()
+    except Exception as e:
+        conn.rollback()
+        c = conn.cursor()
+        print(f"Error checking/migrating show_in_checkout column: {e}")
+    
+    # Migration for coupons table: add show_in_checkout if it doesn't exist
+    try:
+        c.execute("SELECT show_in_checkout FROM coupons LIMIT 1")
+    except errors.UndefinedColumn:
+        conn.rollback()
+        c = conn.cursor()
+        print("Migrating DB: Adding show_in_checkout column to coupons table...")
+        c.execute('ALTER TABLE coupons ADD COLUMN show_in_checkout BOOLEAN DEFAULT TRUE')
+        conn.commit()
+        c = conn.cursor()
+    except Exception as e:
+        conn.rollback()
+        c = conn.cursor()
+        print(f"Error checking/migrating show_in_checkout column: {e}")
     
     # Conversations table
     c.execute('''
@@ -2371,7 +2736,7 @@ def get_chat_limit():
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        c.execute('SELECT is_paid, COALESCE(message_count, 0) FROM users WHERE id = %s', (user_id,))
+        c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
         row = c.fetchone()
         conn.close()
         
@@ -2380,14 +2745,26 @@ def get_chat_limit():
 
         is_paid = bool(row[0])
         message_count = int(row[1] or 0)
+        applied_coupon = row[2]
+        
+        PAID_LIMIT = 30
+        if applied_coupon == 'KRISHNA100':
+            PAID_LIMIT = -1 # Unlimited
+        elif applied_coupon == 'KRISHNA1999' or applied_coupon == 'POORAFREEHAI':
+            PAID_LIMIT = 30
+        
+        remaining = (FREE_LIMIT - message_count) if not is_paid else (PAID_LIMIT - message_count if PAID_LIMIT != -1 else -1)
+        limit_reached = (not is_paid and message_count >= FREE_LIMIT) or (is_paid and PAID_LIMIT != -1 and message_count >= PAID_LIMIT)
 
         return jsonify({
             'success': True,
             'is_paid': is_paid,
             'messages_used': message_count,
             'free_limit': FREE_LIMIT,
-            'remaining': max(0, FREE_LIMIT - message_count) if not is_paid else -1,
-            'limit_reached': (not is_paid and message_count >= FREE_LIMIT)
+            'paid_limit': PAID_LIMIT,
+            'remaining': remaining,
+            'limit_reached': limit_reached,
+            'is_unlimited': (is_paid and PAID_LIMIT == -1)
         })
     except Exception as e:
         print(f"[ERROR] get_chat_limit: {e}")
@@ -2496,18 +2873,49 @@ def verify_payment():
         conn = get_db_connection()
         c = conn.cursor()
         
-        # 1. Update order status
+        # 1. Update order status and get coupon if any
+        c.execute('SELECT coupon_applied FROM subscriptions WHERE razorpay_order_id = %s', (razorpay_order_id,))
+        sub_row = c.fetchone()
+        coupon_code = sub_row[0] if sub_row else None
+
         c.execute('''
             UPDATE subscriptions 
             SET status = 'paid', razorpay_payment_id = %s, updated_at = CURRENT_TIMESTAMP
             WHERE razorpay_order_id = %s
         ''', (razorpay_payment_id, razorpay_order_id))
         
-        # 2. Grant chat access to user (Initial access)
-        c.execute('UPDATE users SET has_chat_access = TRUE, is_paid = TRUE WHERE id = %s', (user_id,))
+        # 2. Grant chat access to user (Initial access) and reset message count, store coupon
+        c.execute('''
+            UPDATE users 
+            SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s 
+            WHERE id = %s
+            RETURNING email, name
+        ''', (coupon_code, user_id))
+        user_row = c.fetchone()
+        
+        # Get subscription details for email content
+        c.execute('SELECT plan_id, amount, currency, coupon_applied FROM subscriptions WHERE razorpay_order_id = %s', (razorpay_order_id,))
+        sub_info = c.fetchone()
+        plan_name, amount, currency, coupon = sub_info if sub_info else ("Monthly Plan", 0, "RUB", None)
         
         conn.commit()
         conn.close()
+
+        if user_row:
+            u_email, u_name = user_row
+            # 3. Send purchase confirmation email to user
+            threading.Thread(
+                target=send_purchase_confirmation_email,
+                args=(u_email, u_name, plan_name),
+                daemon=True
+            ).start()
+            
+            # 4. Send notification to admin
+            threading.Thread(
+                target=send_admin_purchase_notification,
+                args=(u_name, u_email, plan_name, float(amount), currency, coupon),
+                daemon=True
+            ).start()
 
         print(f"✅ Order Verified: {razorpay_payment_id} for User {user_id}")
         
@@ -2651,7 +3059,7 @@ def razorpay_webhook():
             
             # Renew access
             c.execute('''
-                UPDATE users SET has_chat_access = TRUE, is_paid = TRUE 
+                UPDATE users SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0 
                 WHERE id = (SELECT user_id FROM subscriptions WHERE razorpay_subscription_id = %s LIMIT 1)
             ''', (sub_id,))
             
@@ -2766,11 +3174,33 @@ def grant_free_access():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ''', (user_id, f"FREE_{int(time.time())}", f"FREE_PYMNT_{int(time.time())}", plan_id, 0, 'JPY', receipt_id, 'completed'))
         
-        # 2. Grant access
-        c.execute('UPDATE users SET has_chat_access = TRUE, is_paid = TRUE WHERE id = %s', (user_id,))
+        # 2. Grant access and reset message count, store coupon
+        c.execute('''
+            UPDATE users 
+            SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s 
+            WHERE id = %s
+            RETURNING email, name
+        ''', (coupon_code, user_id))
+        user_row = c.fetchone()
         
         conn.commit()
         conn.close()
+
+        if user_row:
+            u_email, u_name = user_row
+            # 3. Send purchase confirmation email to user (Free Access)
+            threading.Thread(
+                target=send_purchase_confirmation_email,
+                args=(u_email, u_name, plan_id),
+                daemon=True
+            ).start()
+            
+            # 4. Send notification to admin
+            threading.Thread(
+                target=send_admin_purchase_notification,
+                args=(u_name, u_email, plan_id, 0.0, 'RUB', coupon_code),
+                daemon=True
+            ).start()
 
         print(f"✅ Free Access Granted via Coupon {coupon_code} for User {user_id}")
         return jsonify({'success': True, 'message': '100% Discount applied. Access granted.'}), 200
@@ -3002,7 +3432,7 @@ def get_coupons():
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT id, code, discount_type, discount_value, is_active, created_at FROM coupons ORDER BY created_at DESC')
+        c.execute('SELECT id, code, discount_type, discount_value, is_active, show_in_checkout, created_at FROM coupons ORDER BY created_at DESC')
         coupons = c.fetchall()
         conn.close()
         return jsonify({'success': True, 'coupons': coupons})
@@ -3024,9 +3454,9 @@ def add_coupon():
         conn = get_db_connection()
         c = conn.cursor()
         c.execute('''
-            INSERT INTO coupons (code, discount_type, discount_value, is_active)
-            VALUES (%s, %s, %s, TRUE)
-        ''', (code, discount_type, discount_value))
+            INSERT INTO coupons (code, discount_type, discount_value, is_active, show_in_checkout)
+            VALUES (%s, %s, %s, TRUE, %s)
+        ''', (code, discount_type, discount_value, data.get('show_in_checkout', True)))
         conn.commit()
         conn.close()
         return jsonify({'message': 'Coupon added successfully', 'success': True})
@@ -3044,6 +3474,17 @@ def validate_coupon():
         if not code:
             return jsonify({'error': 'Coupon code is required', 'success': False}), 400
             
+        # Hardcoded bypass for testing coupon
+        if code == 'POORAFREEHAI':
+            return jsonify({
+                'success': True, 
+                'coupon': {
+                    'code': 'POORAFREEHAI',
+                    'discount_type': 'free_access',
+                    'discount_value': 0
+                }
+            })
+
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
         c.execute('SELECT code, discount_type, discount_value, is_active FROM coupons WHERE code = %s', (code,))
@@ -3096,6 +3537,45 @@ def delete_coupon(coupon_id):
     except Exception as e:
         return jsonify({'error': str(e), 'success': False}), 500
 
+@app.route('/api/admin/coupons/<int:coupon_id>/toggle-visibility', methods=['POST'])
+@admin_required
+def toggle_coupon_visibility(coupon_id):
+    try:
+        data = request.get_json()
+        show_in_checkout = data.get('show_in_checkout')
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('UPDATE coupons SET show_in_checkout = %s WHERE id = %s', (show_in_checkout, coupon_id))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': f'Coupon visibility {"enabled" if show_in_checkout else "disabled"} successfully', 'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/active-coupons', methods=['GET'])
+def get_active_coupons():
+    """Returns coupons that are active and marked for checkout visibility."""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute('''
+            SELECT code, discount_type, discount_value 
+            FROM coupons 
+            WHERE is_active = TRUE AND show_in_checkout = TRUE
+            ORDER BY created_at DESC
+        ''')
+        coupons = c.fetchall()
+        conn.close()
+        
+        # Convert numeric values for JSON
+        for cp in coupons:
+            cp['discount_value'] = float(cp['discount_value']) if cp['discount_value'] else 0
+            
+        return jsonify({'success': True, 'coupons': coupons})
+    except Exception as e:
+        return jsonify({'error': str(e), 'success': False}), 500
+
 # ---------------------------------------------------------------------------
 # Account Deletion (Soft Delete Strategy)
 # ---------------------------------------------------------------------------
@@ -3128,7 +3608,7 @@ def delete_account():
         
         if status == 'deleted':
             conn.close()
-            return jsonify({'error': 'このアカウントは既に削除されています。', 'success': False}), 400
+            return jsonify({'error': 'Этот аккаунт уже удален.', 'success': False}), 400
             
         # 2. Mutate email: example@gmail.com -> example@gmail.com_deleteat_1713333333
         timestamp = int(time.time())
@@ -3150,19 +3630,19 @@ def delete_account():
             
             return jsonify({
                 'success': True,
-                'message': 'アカウントが正常に削除されました。'
+                'message': 'Аккаунт успешно удален.'
             }), 200
             
         except Exception as update_err:
             conn.rollback()
             print(f"❌ Error during email mutation: {update_err}")
-            return jsonify({'error': '削除処理中にエラーが発生しました。', 'success': False}), 500
+            return jsonify({'error': 'Ошибка при удалении.', 'success': False}), 500
         finally:
             conn.close()
             
     except Exception as e:
         print(f"Account deletion error: {e}")
-        return jsonify({'error': '内部サーバーエラーが発生しました。', 'success': False}), 500
+        return jsonify({'error': 'Внутренняя ошибка сервера.', 'success': False}), 500
 
 if __name__ == '__main__':
     print("\n" + "="*70)
