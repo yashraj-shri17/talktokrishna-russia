@@ -1079,21 +1079,21 @@ function VoiceChat() {
                                     navigate('/pricing');
                                 } else {
                                     const basicPlan = {
-                                        name: 'Базовый',
-                                        price: '8 990 ₽',
-                                        period: '',
-                                        description: 'Идеально для первого опыта духовных бесед',
+                                        name: 'Месячный план',
+                                        price: '9 999 ₽',
+                                        period: '/мес',
+                                        description: 'Идеально для ежемесячных духовных бесед',
                                         features: [
-                                            '30 чатов',
-                                            'Все функции ИИ-чата',
-                                            'Высокое качество голоса',
-                                            'Доступ 24/7',
-                                            'История бесед'
+                                            '30 божественных чатов в месяц',
+                                            'Сохранение истории разговоров',
+                                            'Доступ ко всем 700+ шлокам',
+                                            'Персональное руководство',
+                                            'Доступно 24/7'
                                         ],
                                         buttonText: 'Начать сейчас',
                                         isPopular: false,
                                         color: 'var(--blue-glow)',
-                                        plan_id: 'basic_30'
+                                        plan_id: 'monthly_30'
                                     };
                                     navigate('/checkout', { state: { plan: basicPlan } });
                                 }
