@@ -389,12 +389,12 @@ const AdminDashboard = () => {
                         >
                             <option value="free_access">Full Access Unlock</option>
                             <option value="percentage">Percentage (%)</option>
-                            <option value="fixed_value">Fixed Value (¥)</option>
+                            <option value="fixed_value">Fixed Value (₽)</option>
                         </select>
                     </div>
                     {couponForm.discount_type !== 'free_access' && (
                         <div className="control-group">
-                            <label>{couponForm.discount_type === 'percentage' ? 'PERCENTAGE (%)' : 'FIXED VALUE (¥)'}</label>
+                            <label>{couponForm.discount_type === 'percentage' ? 'PERCENTAGE (%)' : 'FIXED VALUE (₽)'}</label>
                             <input
                                 type="number"
                                 className="fancy-input"
@@ -444,7 +444,7 @@ const AdminDashboard = () => {
                                 <td style={{ fontWeight: 600 }}>
                                     {coupon.discount_type === 'free_access' ? 'FULL UNLOCK' :
                                         coupon.discount_type === 'percentage' ? `${coupon.discount_value}%` :
-                                            `¥${coupon.discount_value}`}
+                                            `${coupon.discount_value} ₽`}
                                 </td>
                                 <td>
                                     <span className={`badge ${coupon.is_active ? 'badge-success' : 'badge-danger'}`}>
