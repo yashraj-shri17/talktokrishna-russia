@@ -1508,7 +1508,8 @@ Task:
             return {
                 "answer": random.choice(responses),
                 "shlokas": [],
-                "llm_used": False
+                "llm_used": False,
+                "rejected": True
             }
 
         # 0.5 Check if query is relevant (Fast Regex Check)
