@@ -47,7 +47,7 @@ function Checkout() {
             }
         };
         fetchRecommendedCoupons();
-    }, []);
+    }, [selectedPlan.plan_id]);
 
     useEffect(() => {
         if (!location.state?.plan) {
