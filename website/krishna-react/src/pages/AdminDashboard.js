@@ -424,6 +424,17 @@ const AdminDashboard = () => {
                             <option value="fixed_value">Fixed Value (₽)</option>
                         </select>
                     </div>
+                    {couponForm.discount_type !== 'free_access' && (
+                        <div className="control-group">
+                            <label>REWARD VALUE {couponForm.discount_type === 'percentage' ? '(%)' : '(₽)'}</label>
+                            <input
+                                type="number"
+                                className="fancy-input"
+                                value={couponForm.discount_value}
+                                onChange={(e) => setCouponForm({ ...couponForm, discount_value: e.target.value })}
+                                required
+                                placeholder={couponForm.discount_type === 'percentage' ? '20' : '500'}
+                            />
                         </div>
                     )}
                     <div className="control-group">
