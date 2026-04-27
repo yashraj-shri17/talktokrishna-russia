@@ -35,7 +35,10 @@ function Checkout() {
     useEffect(() => {
         const fetchRecommendedCoupons = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/api/active-coupons`);
+                const planType = selectedPlan.plan_id?.includes('yearly') || selectedPlan.plan_id?.includes('premium') ? 'yearly' : 'monthly';
+                const res = await axios.get(`${API_BASE_URL}/api/active-coupons`, {
+                    params: { plan: planType }
+                });
                 if (res.data.success) {
                     setRecommendedCoupons(res.data.coupons);
                 }

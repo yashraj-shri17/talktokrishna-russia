@@ -454,11 +454,12 @@ function VoiceChat() {
         };
         setMessages(prev => [...prev, userMessage]);
 
-        // ---- REAL-TIME UI UPDATE START ----
-        // Pre-emptively update usage count on UI for immediate feedback
         // Pre-emptively update usage count on UI for immediate feedback
         // Now handles both free and paid (non-unlimited) users
-        if (user?.id && !chatLimitInfo.is_unlimited) {
+        // EXCEPT if it's a simple greeting or acknowledgment (to avoid flickers)
+        const isLikelyGreeting = /^(привет|хай|здравствуй|hello|hi|hey|thanks|спасибо|ок|ok|да|yes)$/i.test(text.trim().toLowerCase());
+        
+        if (user?.id && !chatLimitInfo.is_unlimited && !isLikelyGreeting) {
             setChatLimitInfo(prev => ({
                 ...prev,
                 messages_used: prev.messages_used + 1,
@@ -890,7 +891,7 @@ function VoiceChat() {
                 </button>
 
                 {/* Chat Limit Badge */}
-                {user && !chatLimitInfo.is_unlimited && (
+                {user && !chatLimitInfo.is_unlimited && !chatLimitInfo.is_yearly && (
                     <div className={`chat-limit-badge ${chatLimitInfo.remaining <= (chatLimitInfo.is_paid ? 5 : 1) ? 'critical' : ''} ${chatLimitInfo.is_paid ? 'paid-badge' : ''}`}>
                         <div className="limit-icon">{chatLimitInfo.is_paid ? '⭐' : '✨'}</div>
                         <div className="limit-text">
@@ -1063,7 +1064,9 @@ function VoiceChat() {
                         <h3>{chatLimitInfo.is_paid ? 'Лимит сообщений исчерпан' : 'Лимит исчерпан'}</h3>
                         <p>
                             {chatLimitInfo.is_paid 
-                                ? 'Вы использовали все 30 сообщений вашего текущего плана. Продлите подписку, чтобы продолжить общение.' 
+                                ? (chatLimitInfo.is_yearly 
+                                    ? 'Вы использовали все 360 разговоров вашего годового плана. Пожалуйста, продлите подписку, чтобы продолжить.' 
+                                    : 'Вы использовали все 30 сообщений вашего текущего плана. Продлите подписку, чтобы продолжить общение.')
                                 : 'Вы достигли бесплатного лимита. Пожалуйста, обновите тариф, чтобы продолжить диалог.'}
                         </p>
                         {!chatLimitInfo.is_paid && (

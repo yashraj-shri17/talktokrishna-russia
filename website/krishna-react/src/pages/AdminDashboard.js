@@ -40,7 +40,8 @@ const AdminDashboard = () => {
     const [adminForm, setAdminForm] = useState({ name: '', email: '', password: '' });
     const [accessForm, setAccessForm] = useState({ email: '', temporary_password: '', has_access: true });
     const [coupons, setCoupons] = useState([]);
-    const [couponForm, setCouponForm] = useState({ code: '', discount_type: 'free_access', discount_value: '', show_in_checkout: true });
+    const [couponForm, setCouponForm] = useState({ code: '', discount_type: 'free_access', discount_value: '', show_in_checkout: true, applicable_plan: 'both' });
+    const [platformConfigs, setPlatformConfigs] = useState([]);
 
     const fetchAnalytics = useCallback(async () => {
         if (!user || user.role !== 'admin') return;
@@ -110,6 +111,20 @@ const AdminDashboard = () => {
         }
     }, [user]);
 
+    const fetchPlatformConfigs = useCallback(async () => {
+        if (!user || user.role !== 'admin') return;
+        try {
+            const response = await axios.get(`${API_BASE_URL}/api/admin/platform-config`, {
+                params: { admin_id: user.id }
+            });
+            if (response.data.success) {
+                setPlatformConfigs(response.data.configs);
+            }
+        } catch (err) {
+            setError('Failed to fetch platform configs');
+        }
+    }, [user]);
+
     const fetchUserConversations = async (userId) => {
         setLoading(true);
         try {
@@ -136,12 +151,13 @@ const AdminDashboard = () => {
         if (activeTab === 'analytics') fetchAnalytics();
         if (activeTab === 'users' || activeTab === 'access') fetchUsers();
         if (activeTab === 'coupons') fetchCoupons();
+        if (activeTab === 'settings') fetchPlatformConfigs();
         if (activeTab === 'conversations') {
             fetchConversationUsers();
             setSelectedUser(null);
             setUserConversations([]);
         }
-    }, [activeTab, user, navigate, fetchAnalytics, fetchUsers, fetchConversationUsers, fetchCoupons]);
+    }, [activeTab, user, navigate, fetchAnalytics, fetchUsers, fetchConversationUsers, fetchCoupons, fetchPlatformConfigs]);
 
     const handleCreateAdmin = async (e) => {
         e.preventDefault();
@@ -205,7 +221,7 @@ const AdminDashboard = () => {
             });
             if (response.data.success) {
                 setSuccessMessage('New coupon generated successfully.');
-                setCouponForm({ code: '', discount_type: 'free_access', discount_value: '', show_in_checkout: true });
+                setCouponForm({ code: '', discount_type: 'free_access', discount_value: '', show_in_checkout: true, applicable_plan: 'both' });
                 fetchCoupons();
             }
         } catch (err) {
@@ -253,6 +269,22 @@ const AdminDashboard = () => {
             }
         } catch (err) {
             setError('Visibility toggle failed');
+        }
+    };
+
+    const handleUpdateConfig = async (key, value) => {
+        try {
+            const response = await axios.post(`${API_BASE_URL}/api/admin/platform-config`, {
+                key,
+                value,
+                admin_id: user.id
+            });
+            if (response.data.success) {
+                setSuccessMessage(response.data.message);
+                fetchPlatformConfigs();
+            }
+        } catch (err) {
+            setError(err.response?.data?.error || 'Config update failed');
         }
     };
 
@@ -392,19 +424,21 @@ const AdminDashboard = () => {
                             <option value="fixed_value">Fixed Value (₽)</option>
                         </select>
                     </div>
-                    {couponForm.discount_type !== 'free_access' && (
-                        <div className="control-group">
-                            <label>{couponForm.discount_type === 'percentage' ? 'PERCENTAGE (%)' : 'FIXED VALUE (₽)'}</label>
-                            <input
-                                type="number"
-                                className="fancy-input"
-                                value={couponForm.discount_value}
-                                onChange={(e) => setCouponForm({ ...couponForm, discount_value: e.target.value })}
-                                required
-                                placeholder={couponForm.discount_type === 'percentage' ? 'e.g. 50' : 'e.g. 100'}
-                            />
                         </div>
                     )}
+                    <div className="control-group">
+                        <label>APPLICABLE PLAN</label>
+                        <select
+                            className="fancy-input"
+                            value={couponForm.applicable_plan}
+                            onChange={(e) => setCouponForm({ ...couponForm, applicable_plan: e.target.value })}
+                            style={{ background: 'var(--admin-panel-bg)' }}
+                        >
+                            <option value="both">Both (Monthly & Yearly)</option>
+                            <option value="monthly">Monthly Only</option>
+                            <option value="yearly">Yearly Only</option>
+                        </select>
+                    </div>
                     <div className="control-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
                         <input
                             type="checkbox"
@@ -430,6 +464,7 @@ const AdminDashboard = () => {
                             <th>Coupon Code</th>
                             <th>Type</th>
                             <th>Reward Value</th>
+                            <th>Plan Target</th>
                             <th>Status</th>
                             <th>Visible</th>
                             <th>Created At</th>
@@ -445,6 +480,11 @@ const AdminDashboard = () => {
                                     {coupon.discount_type === 'free_access' ? 'FULL UNLOCK' :
                                         coupon.discount_type === 'percentage' ? `${coupon.discount_value}%` :
                                             `${coupon.discount_value} ₽`}
+                                </td>
+                                <td>
+                                    <span className="badge badge-indigo">
+                                        {coupon.applicable_plan.toUpperCase()}
+                                    </span>
                                 </td>
                                 <td>
                                     <span className={`badge ${coupon.is_active ? 'badge-success' : 'badge-danger'}`}>
@@ -523,6 +563,9 @@ const AdminDashboard = () => {
                             <div className={`nav-item ${activeTab === 'coupons' ? 'active' : ''}`} onClick={() => setActiveTab('coupons')}>
                                 <Ticket /> <span>Coupon Engine</span>
                             </div>
+                            <div className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
+                                <Activity /> <span>Settings</span>
+                            </div>
 
                             <div style={{ marginTop: 'auto', borderTop: '1px solid var(--admin-panel-border)', paddingTop: '1rem' }}>
                                 <div className="nav-item" onClick={() => navigate('/')} style={{ color: 'var(--accent-color)' }}>
@@ -558,6 +601,41 @@ const AdminDashboard = () => {
 
                             {activeTab === 'conversations' && renderConversations()}
                             {activeTab === 'coupons' && renderCoupons()}
+
+                            {activeTab === 'settings' && (
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="form-panel">
+                                    <div className="sidebar-header" style={{ padding: 0, marginBottom: '2rem' }}>
+                                        <h3>Global Platform Settings</h3>
+                                    </div>
+                                    <div className="settings-list">
+                                        {platformConfigs.map(config => (
+                                            <div key={config.key} className="control-group" style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
+                                                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>{config.key.replace('_', ' ').toUpperCase()}</span>
+                                                    <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>Last Sync: {formatDate(config.updated_at)}</span>
+                                                </label>
+                                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                                                    <input 
+                                                        type="text" 
+                                                        className="fancy-input" 
+                                                        defaultValue={config.value} 
+                                                        onBlur={(e) => {
+                                                            if (e.target.value !== config.value) {
+                                                                handleUpdateConfig(config.key, e.target.value);
+                                                            }
+                                                        }}
+                                                        placeholder="Enter value"
+                                                    />
+                                                </div>
+                                                <p style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '0.5rem' }}>
+                                                    {config.key === 'monthly_limit' ? 'Sets the base conversation limit for monthly subscribers.' : ''}
+                                                </p>
+                                            </div>
+                                        ))}
+                                        {platformConfigs.length === 0 && <p>No configurations found.</p>}
+                                    </div>
+                                </motion.div>
+                            )}
 
                             {activeTab === 'access' && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="form-panel">

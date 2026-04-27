@@ -400,6 +400,45 @@ gita_api = GitaAPI()
 gita_api._load_resources()
 print("API Ready!\n")
 
+# ---------------------------------------------------------------------------
+# Helper: Dynamic Paid Limit
+# ---------------------------------------------------------------------------
+def get_dynamic_paid_limit(coupon_applied: str, plan_type: str) -> int:
+    """
+    Returns the message limit for a paid user based on their coupon and plan type.
+    -1 = unlimited
+    360 = yearly (tracked as total for the year)
+    30  = default monthly
+    """
+    if coupon_applied == 'KRISHNA100':
+        return -1  # Unlimited
+    if plan_type == 'yearly':
+        return 360  # 360 conversations per year
+    # Default monthly limit from platform config (DB), fallback to 30
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT value FROM platform_config WHERE key = 'monthly_limit'")
+        row = c.fetchone()
+        conn.close()
+        if row:
+            return int(row[0])
+    except Exception:
+        pass
+    return 30  # Hardcoded fallback
+
+def get_platform_config(key: str, default=None):
+    """Fetch a single config value from platform_config table."""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT value FROM platform_config WHERE key = %s", (key,))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else default
+    except Exception:
+        return default
+
 @app.route('/api/ask', methods=['POST'])
 def ask_question():
     """
@@ -485,12 +524,12 @@ def ask_question():
             try:
                 conn = get_db_connection()
                 c = conn.cursor()
-                c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
+                c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied, plan_type FROM users WHERE id = %s', (user_id,))
                 user_limit_row = c.fetchone()
                 conn.close()
                 
                 if user_limit_row:
-                    is_paid_status, msg_count, applied_coupon = user_limit_row
+                    is_paid_status, msg_count, applied_coupon, plan_type = user_limit_row
                     if not is_paid_status and msg_count >= FREE_LIMIT:
                         return jsonify({
                             'success': False,
@@ -500,12 +539,14 @@ def ask_question():
                             'free_limit': FREE_LIMIT
                         }), 403
                     
-                    # Dynamic Paid Limit based on coupon
-                    PAID_LIMIT = 30 # Default
-                    if applied_coupon == 'KRISHNA100':
-                        PAID_LIMIT = -1 # Unlimited
-                    elif applied_coupon == 'KRISHNA1999' or applied_coupon == 'POORAFREEHAI':
-                        PAID_LIMIT = 30
+                    # Dynamic Paid Limit based on coupon + plan_type
+                    # Fetch plan_type too (yearly users get 360/year limit)
+                    c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied, plan_type FROM users WHERE id = %s', (user_id,))
+                    user_full_row = c.fetchone()
+                    if user_full_row:
+                        is_paid_status, msg_count, applied_coupon, plan_type = user_full_row
+                    
+                    PAID_LIMIT = get_dynamic_paid_limit(applied_coupon, plan_type)
                     
                     if is_paid_status and PAID_LIMIT != -1 and msg_count >= PAID_LIMIT:
                         return jsonify({
@@ -763,21 +804,27 @@ def ask_question():
                 c_cl = conn_cl.cursor()
                 c_cl.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
                 cl_row = c_cl.fetchone()
-                conn_cl.close()
                 if cl_row:
                     is_p, m_c, a_c = cl_row
                     
+                    # Fetch plan_type for yearly check
+                    c_cl.execute('SELECT plan_type FROM users WHERE id = %s', (user_id,))
+                    pt_row = c_cl.fetchone()
+                    p_type = pt_row[0] if pt_row else None
+                    
                     # Calculate dynamic limit
-                    p_limit = 30
-                    if a_c == 'KRISHNA100': p_limit = -1
+                    p_limit = get_dynamic_paid_limit(a_c, p_type)
+                    is_yearly = (p_type == 'yearly')
                     
                     chat_limit_info = {
                         'is_paid': bool(is_p),
                         'messages_used': m_c,
                         'remaining': (max(0, 5 - m_c) if not is_p else (max(0, p_limit - m_c) if p_limit != -1 else -1)),
                         'limit_reached': (not is_p and m_c >= 5) or (is_p and p_limit != -1 and m_c >= p_limit),
-                        'is_unlimited': (is_p and p_limit == -1)
+                        'is_unlimited': (is_p and p_limit == -1),
+                        'is_yearly': is_yearly
                     }
+                conn_cl.close()
             except Exception as e:
                 print(f"Chat limit re-fetch error: {e}")
         response['chat_limit'] = chat_limit_info
@@ -1802,6 +1849,21 @@ def init_db():
         print(f"Error checking/migrating deleted_at: {e}")
     # ─────────────────────────────────────────────────────────────────────────
     
+    # platform_config table for admin-configurable settings
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS platform_config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    c = conn.cursor()
+    # Seed default monthly_limit if not present
+    c.execute("INSERT INTO platform_config (key, value) VALUES ('monthly_limit', '30') ON CONFLICT (key) DO NOTHING")
+    conn.commit()
+    c = conn.cursor()
+
     # Coupons table
     c.execute('''
         CREATE TABLE IF NOT EXISTS coupons (
@@ -1811,6 +1873,7 @@ def init_db():
             discount_value NUMERIC DEFAULT 0,
             is_active BOOLEAN DEFAULT TRUE,
             show_in_checkout BOOLEAN DEFAULT TRUE,
+            applicable_plan TEXT DEFAULT 'both',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -1895,21 +1958,46 @@ def init_db():
         conn.rollback()
         c = conn.cursor()
         print(f"Error checking/migrating show_in_checkout column: {e}")
-    
-    # Migration for coupons table: add show_in_checkout if it doesn't exist
+
+    # Migration for coupons table: add applicable_plan if it doesn't exist
     try:
-        c.execute("SELECT show_in_checkout FROM coupons LIMIT 1")
+        c.execute("SELECT applicable_plan FROM coupons LIMIT 1")
     except errors.UndefinedColumn:
         conn.rollback()
         c = conn.cursor()
-        print("Migrating DB: Adding show_in_checkout column to coupons table...")
-        c.execute('ALTER TABLE coupons ADD COLUMN show_in_checkout BOOLEAN DEFAULT TRUE')
+        print("Migrating DB: Adding applicable_plan column to coupons table...")
+        c.execute("ALTER TABLE coupons ADD COLUMN applicable_plan TEXT DEFAULT 'both'")
         conn.commit()
         c = conn.cursor()
     except Exception as e:
         conn.rollback()
         c = conn.cursor()
-        print(f"Error checking/migrating show_in_checkout column: {e}")
+        print(f"Error checking/migrating applicable_plan column: {e}")
+
+    # Migration for users table: add plan_type column
+    try:
+        c.execute("SELECT plan_type FROM users LIMIT 1")
+    except errors.UndefinedColumn:
+        conn.rollback()
+        c = conn.cursor()
+        print("Migrating DB: Adding plan_type column to users table...")
+        c.execute("ALTER TABLE users ADD COLUMN plan_type TEXT DEFAULT 'monthly'")
+        # Seed existing paid users based on their plan_id in subscriptions
+        c.execute("""
+            UPDATE users u
+            SET plan_type = 'yearly'
+            WHERE u.is_paid = TRUE AND EXISTS (
+                SELECT 1 FROM subscriptions s
+                WHERE s.user_id = u.id AND s.plan_id ILIKE '%yearly%'
+                ORDER BY s.created_at DESC LIMIT 1
+            )
+        """)
+        conn.commit()
+        c = conn.cursor()
+    except Exception as e:
+        conn.rollback()
+        c = conn.cursor()
+        print(f"Error checking/migrating plan_type column: {e}")
     
     # Conversations table
     c.execute('''
@@ -2736,7 +2824,7 @@ def get_chat_limit():
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied FROM users WHERE id = %s', (user_id,))
+        c.execute('SELECT is_paid, COALESCE(message_count, 0), coupon_applied, plan_type FROM users WHERE id = %s', (user_id,))
         row = c.fetchone()
         conn.close()
         
@@ -2746,13 +2834,11 @@ def get_chat_limit():
         is_paid = bool(row[0])
         message_count = int(row[1] or 0)
         applied_coupon = row[2]
-        
-        PAID_LIMIT = 30
-        if applied_coupon == 'KRISHNA100':
-            PAID_LIMIT = -1 # Unlimited
-        elif applied_coupon == 'KRISHNA1999' or applied_coupon == 'POORAFREEHAI':
-            PAID_LIMIT = 30
-        
+        plan_type = row[3] if len(row) > 3 else 'monthly'
+
+        PAID_LIMIT = get_dynamic_paid_limit(applied_coupon, plan_type)
+        is_yearly = (plan_type == 'yearly')
+
         remaining = (FREE_LIMIT - message_count) if not is_paid else (PAID_LIMIT - message_count if PAID_LIMIT != -1 else -1)
         limit_reached = (not is_paid and message_count >= FREE_LIMIT) or (is_paid and PAID_LIMIT != -1 and message_count >= PAID_LIMIT)
 
@@ -2764,7 +2850,8 @@ def get_chat_limit():
             'paid_limit': PAID_LIMIT,
             'remaining': remaining,
             'limit_reached': limit_reached,
-            'is_unlimited': (is_paid and PAID_LIMIT == -1)
+            'is_unlimited': (is_paid and PAID_LIMIT == -1),
+            'is_yearly': is_yearly
         })
     except Exception as e:
         print(f"[ERROR] get_chat_limit: {e}")
@@ -2884,13 +2971,19 @@ def verify_payment():
             WHERE razorpay_order_id = %s
         ''', (razorpay_payment_id, razorpay_order_id))
         
-        # 2. Grant chat access to user (Initial access) and reset message count, store coupon
+        # 2. Grant chat access to user (Initial access) and reset message count, store coupon + plan_type
+        # Determine plan_type from plan_id
+        c.execute('SELECT plan_id FROM subscriptions WHERE razorpay_order_id = %s', (razorpay_order_id,))
+        pid_row = c.fetchone()
+        _plan_id = pid_row[0] if pid_row else 'monthly_30'
+        _plan_type = 'yearly' if ('yearly' in (_plan_id or '').lower() or 'premium' in (_plan_id or '').lower()) else 'monthly'
         c.execute('''
             UPDATE users 
-            SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s 
+            SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s, plan_type = %s
             WHERE id = %s
             RETURNING email, name
-        ''', (coupon_code, user_id))
+        ''', (coupon_code, _plan_type, user_id))
+        print(f"[Plan] Stored plan_type='{_plan_type}' for user {user_id} (plan_id={_plan_id})")
         user_row = c.fetchone()
         
         # Get subscription details for email content
@@ -3174,14 +3267,16 @@ def grant_free_access():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ''', (user_id, f"FREE_{int(time.time())}", f"FREE_PYMNT_{int(time.time())}", plan_id, 0, 'JPY', receipt_id, 'completed'))
         
-        # 2. Grant access and reset message count, store coupon
+        # 2. Grant access and reset message count, store coupon + plan_type
+        _free_plan_type = 'yearly' if ('yearly' in (plan_id or '').lower() or 'premium' in (plan_id or '').lower()) else 'monthly'
         c.execute('''
             UPDATE users 
-            SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s 
+            SET has_chat_access = TRUE, is_paid = TRUE, message_count = 0, coupon_applied = %s, plan_type = %s
             WHERE id = %s
             RETURNING email, name
-        ''', (coupon_code, user_id))
+        ''', (coupon_code, _free_plan_type, user_id))
         user_row = c.fetchone()
+        print(f"[Plan] Free access granted with plan_type='{_free_plan_type}' for user {user_id}")
         
         conn.commit()
         conn.close()
@@ -3432,7 +3527,7 @@ def get_coupons():
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT id, code, discount_type, discount_value, is_active, show_in_checkout, created_at FROM coupons ORDER BY created_at DESC')
+        c.execute('SELECT id, code, discount_type, discount_value, is_active, show_in_checkout, applicable_plan, created_at FROM coupons ORDER BY created_at DESC')
         coupons = c.fetchall()
         conn.close()
         return jsonify({'success': True, 'coupons': coupons})
@@ -3447,16 +3542,21 @@ def add_coupon():
     discount_type = data.get('discount_type', 'free_access')
     discount_value = data.get('discount_value', 0)
     
+    applicable_plan = data.get('applicable_plan', 'both')  # 'monthly', 'yearly', 'both'
+
     if not code:
         return jsonify({'error': 'Coupon code is required', 'success': False}), 400
+
+    if applicable_plan not in ('monthly', 'yearly', 'both'):
+        applicable_plan = 'both'
         
     try:
         conn = get_db_connection()
         c = conn.cursor()
         c.execute('''
-            INSERT INTO coupons (code, discount_type, discount_value, is_active, show_in_checkout)
-            VALUES (%s, %s, %s, TRUE, %s)
-        ''', (code, discount_type, discount_value, data.get('show_in_checkout', True)))
+            INSERT INTO coupons (code, discount_type, discount_value, is_active, show_in_checkout, applicable_plan)
+            VALUES (%s, %s, %s, TRUE, %s, %s)
+        ''', (code, discount_type, discount_value, data.get('show_in_checkout', True), applicable_plan))
         conn.commit()
         conn.close()
         return jsonify({'message': 'Coupon added successfully', 'success': True})
@@ -3555,16 +3655,28 @@ def toggle_coupon_visibility(coupon_id):
 
 @app.route('/api/active-coupons', methods=['GET'])
 def get_active_coupons():
-    """Returns coupons that are active and marked for checkout visibility."""
+    """Returns coupons that are active and marked for checkout visibility.
+    Optionally filter by plan type: ?plan=monthly or ?plan=yearly
+    """
     try:
+        plan_filter = request.args.get('plan', 'both')  # 'monthly', 'yearly', 'both'
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('''
-            SELECT code, discount_type, discount_value 
-            FROM coupons 
-            WHERE is_active = TRUE AND show_in_checkout = TRUE
-            ORDER BY created_at DESC
-        ''')
+        if plan_filter in ('monthly', 'yearly'):
+            c.execute('''
+                SELECT code, discount_type, discount_value, applicable_plan
+                FROM coupons 
+                WHERE is_active = TRUE AND show_in_checkout = TRUE
+                  AND (applicable_plan = 'both' OR applicable_plan = %s)
+                ORDER BY created_at DESC
+            ''', (plan_filter,))
+        else:
+            c.execute('''
+                SELECT code, discount_type, discount_value, applicable_plan
+                FROM coupons 
+                WHERE is_active = TRUE AND show_in_checkout = TRUE
+                ORDER BY created_at DESC
+            ''')
         coupons = c.fetchall()
         conn.close()
         
@@ -3573,6 +3685,59 @@ def get_active_coupons():
             cp['discount_value'] = float(cp['discount_value']) if cp['discount_value'] else 0
             
         return jsonify({'success': True, 'coupons': coupons})
+    except Exception as e:
+        return jsonify({'error': str(e), 'success': False}), 500
+
+# ---------------------------------------------------------------------------
+# Admin Platform Config Endpoints
+# ---------------------------------------------------------------------------
+@app.route('/api/admin/platform-config', methods=['GET'])
+@admin_required
+def get_platform_config_admin():
+    """Get all platform configuration values."""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute('SELECT key, value, updated_at FROM platform_config ORDER BY key')
+        configs = c.fetchall()
+        conn.close()
+        return jsonify({'success': True, 'configs': configs})
+    except Exception as e:
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/admin/platform-config', methods=['POST'])
+@admin_required
+def update_platform_config_admin():
+    """Update a platform configuration value."""
+    try:
+        data = request.get_json()
+        key = data.get('key', '').strip()
+        value = str(data.get('value', '')).strip()
+
+        if not key or not value:
+            return jsonify({'error': 'key and value are required', 'success': False}), 400
+
+        # Validate monthly_limit is a positive integer
+        if key == 'monthly_limit':
+            try:
+                v_int = int(value)
+                if v_int <= 0:
+                    raise ValueError
+                value = str(v_int)
+            except ValueError:
+                return jsonify({'error': 'monthly_limit must be a positive integer', 'success': False}), 400
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO platform_config (key, value, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+        ''', (key, value))
+        conn.commit()
+        conn.close()
+        print(f"[Admin] Platform config updated: {key} = {value}")
+        return jsonify({'success': True, 'message': f'Config "{key}" updated to "{value}"'})
     except Exception as e:
         return jsonify({'error': str(e), 'success': False}), 500
 
