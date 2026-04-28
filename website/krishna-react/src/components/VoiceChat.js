@@ -891,14 +891,14 @@ function VoiceChat() {
                 </button>
 
                 {/* Chat Limit Badge */}
-                {user && !chatLimitInfo.is_unlimited && !chatLimitInfo.is_yearly && (
+                {user && !chatLimitInfo.is_unlimited && (
                     <div className={`chat-limit-badge ${chatLimitInfo.remaining <= (chatLimitInfo.is_paid ? 5 : 1) ? 'critical' : ''} ${chatLimitInfo.is_paid ? 'paid-badge' : ''}`}>
                         <div className="limit-icon">{chatLimitInfo.is_paid ? '⭐' : '✨'}</div>
                         <div className="limit-text">
                             {selectedLanguage === 'english' ? (
-                                <>Remaining: <span>{chatLimitInfo.remaining}</span></>
+                                <>Remaining: <span>{chatLimitInfo.remaining}</span> conversations</>
                             ) : (
-                                <>Осталось: <span>{chatLimitInfo.remaining}</span></>
+                                <>Осталось: <span>{chatLimitInfo.remaining}</span> разговоров</>
                             )}
                         </div>
                     </div>
