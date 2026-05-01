@@ -247,6 +247,15 @@
     .chat-limit-badge {
         bottom: 70px;
         /* Higher on mobile to avoid overlapping OS controls/tab bars */
+        padding: 6px 12px;
+    }
+    
+    .limit-text {
+        font-size: 0.75rem;
+    }
+    
+    .limit-text span {
+        font-size: 0.9rem;
     }
 }
 
@@ -493,6 +502,9 @@
     z-index: 15;
     animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
     transition: all 0.3s ease;
+    white-space: nowrap;
+    max-width: 90%;
+    box-sizing: border-box;
 }
 
 .chat-limit-badge:hover {
@@ -517,6 +529,9 @@
     font-weight: 600;
     color: rgba(255, 255, 255, 0.8);
     letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .limit-text span {
